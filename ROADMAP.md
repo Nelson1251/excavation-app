@@ -9,6 +9,13 @@
 > (detectar curvas y elevaciones del PDF; el usuario acepta o rechaza) → después: secciones, reportes,
 > guardado automático y deshacer. La base de cálculo (tipos, librería y pruebas) ya está en el código
 > (`src/lib/earthwork`, #4); falta conectarla al lienzo.
+>
+> **Hecho (v0.4.1, commit [a3388b7](https://github.com/Nelson1251/excavation-app/commit/a3388b7)):** una misma
+> zona tiene **profundidad de corte** y **profundidad de relleno** por separado (ya no hay que dibujarla dos
+> veces). La app calcula los dos volúmenes de la zona (corte = área × prof. de corte, relleno = área × prof. de
+> relleno) y un neto con signo (corte +, relleno −); los totales, abundamiento/contracción y viajes de camión
+> suman el corte y el relleno por separado. Funciona en Metros y en Pies (pies + pulgadas con fracciones). Las
+> zonas del modelo anterior se convierten solas: corte d → corte d / relleno 0; relleno d → corte 0 / relleno d.
 
 Tracking: every item below is a GitHub issue labelled `roadmap` + `phase-N` (or `later`).
 Architecture notes: [docs/earthwork-architecture.md](docs/earthwork-architecture.md).
@@ -49,9 +56,10 @@ Architecture notes: [docs/earthwork-architecture.md](docs/earthwork-architecture
 
 | Phase | Item | Issue | Status |
 | --- | --- | --- | --- |
-| Phase 0 | P0-1 Reliable PDF loading (pdf.js worker) | [#1](https://github.com/Nelson1251/excavation-app/issues/1) | 🚧 in progress (other worker) |
-| Phase 0 | P0-2 Feet mode shows zero metric units | [#2](https://github.com/Nelson1251/excavation-app/issues/2) | 🚧 in progress (other worker) |
-| Phase 0 | P0-3 Multi-page PDF navigation | [#3](https://github.com/Nelson1251/excavation-app/issues/3) | 🚧 in progress (other worker) |
+| Phase 0 | P0-1 Reliable PDF loading (pdf.js worker) | [#1](https://github.com/Nelson1251/excavation-app/issues/1) | ✅ done (d7cdbe7) |
+| Phase 0 | P0-2 Feet mode shows zero metric units | [#2](https://github.com/Nelson1251/excavation-app/issues/2) | ✅ done (closed with bdc29e5) |
+| Phase 0 | P0-3 Multi-page PDF navigation | [#3](https://github.com/Nelson1251/excavation-app/issues/3) | ✅ done (bdc29e5) |
+| Zone takeoff | Z-1 One zone with separate cut depth and fill depth | — | ✅ done (v0.4.1, [a3388b7](https://github.com/Nelson1251/excavation-app/commit/a3388b7)) |
 | Phase 1 | P1-1 Earthwork data model, calculation library and store (scaffolding) | [#4](https://github.com/Nelson1251/excavation-app/issues/4) | ✅ scaffolding landed (not wired to UI) |
 | Phase 1 | P1-2 Site boundary tool | [#5](https://github.com/Nelson1251/excavation-app/issues/5) | ⏳ planned |
 | Phase 1 | P1-3 Trace existing and proposed contours with elevations | [#6](https://github.com/Nelson1251/excavation-app/issues/6) | ⏳ planned |
@@ -109,6 +117,24 @@ Plan sets have many sheets; the grading sheet is rarely page 1. Zones (and later
 - Previous/next page controls and a page number field (`3 / 12`), EN/ES labels.
 - Zones, calibration and (later) earthwork surfaces are shown only on their own page.
 - Scale can be calibrated per page (different sheets can have different scales).
+
+## Zone takeoff — done
+
+### Z-1 · One zone with separate cut depth and fill depth — ✅ done (v0.4.1, [a3388b7](https://github.com/Nelson1251/excavation-app/commit/a3388b7))
+
+*ES: Una misma zona con profundidad de corte y profundidad de relleno por separado.*
+
+Before, a zone had one depth and a Cut/Fill type, so an area that is partly cut and partly filled had to be drawn
+twice. Now every zone has `cutDepth` and `fillDepth` (non-negative magnitudes in meters; either may be 0).
+
+- Zone editor: **Cut depth / Profundidad de corte** and **Fill depth / Profundidad de relleno** inputs (Meters, or
+  Feet with ft-in fractions via `DistanceInput`). Badge Cut / Fill / Cut + Fill; plan color red / blue / purple.
+- Per zone: cut volume = area × cutDepth (bank; loose with the soil swell), fill volume = area × fillDepth
+  (compacted; material needed with the shrink, loose with the haul swell), signed net = cut − fill (cut +, fill −).
+- Totals and truck trips add cut and fill separately across all zones and sheets.
+- Migration (`migrarZona`, `src/lib/zones.ts`): old cut zone d → cutDepth d / fillDepth 0; old fill zone d →
+  cutDepth 0 / fillDepth d (its manual swell becomes the fill haul swell). Applied in `addZone`/`updateZone`.
+- Tests in `scripts/test-lib.mjs` (volumes, totals, migration, factors, store) and the Playwright drawing test.
 
 ## Phase 1 — Surface cut/fill
 
