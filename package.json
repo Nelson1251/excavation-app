@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node scripts/test-lib.mjs",
+    "test": "node scripts/test-lib.mjs && node scripts/test-earthwork.mjs",
     "preview": "vite preview",
-    "sample-pdf": "node scripts/make-sample-pdf.mjs"
+    "sample-pdf": "node scripts/make-sample-pdf.mjs",
+    "earthwork-demo": "node scripts/earthwork-demo.mjs"
   },
   "dependencies": {
     "@turf/turf": "^7.4.0",
