@@ -216,7 +216,7 @@ export type ErrorDistancia =
   | 'distance.err.negative'
   | 'distance.err.zero'
   | 'distance.err.empty'
-  | 'distance.err.feetInteger';
+  | 'distance.err.feetInvalid';
 
 /** Validación común del valor ya convertido a metros. */
 export function validarDistanciaMetros(m: number, permitirCero: boolean): ErrorDistancia | null {
@@ -225,15 +225,45 @@ export function validarDistanciaMetros(m: number, permitirCero: boolean): ErrorD
   return null;
 }
 
-/** Lee el campo de pies: entero ≥ 0 (vacío = 0). */
-export function leerPiesEnteros(texto: string): { valor: number } | { error: 'distance.err.feetInteger' } {
-  const t = texto.trim();
-  if (t === '') return { valor: 0 };
-  return /^\d+$/.test(t) ? { valor: Number(t) } : { error: 'distance.err.feetInteger' };
+/**
+ * Lee el campo de pies. Es un campo de texto (no type=number, que en Chrome/Edge descarta en silencio
+ * "/" y " ": "1/4" se convertía en "14"), así que acepta también lo que el usuario escriba todo junto:
+ * - "5" → 5 ft; "5.5" / "5,5" / "5.5'" → 5 ft 6 in (pies decimales);
+ * - "5 1/4", "5-1/4", "5' 1/4", "5' 7 1/2\"", "5ft 7" → pies + pulgadas;
+ * - "1/4", "3/4\"", "7\"" → solo pulgadas (una fracción sola en el campo de pies son pulgadas).
+ * Vacío = 0. Devuelve pies enteros y las pulgadas que haya aportado este campo (pueden ser ≥ 12 en
+ * casos como "5.99"; se normalizan al salir del campo).
+ */
+export function leerCampoPies(
+  texto: string,
+): { pies: number; pulgadas: number } | { error: 'distance.err.feetInvalid' | ErrorPulgadas } {
+  const t = texto.trim().replace(/\s+/g, ' ').replace(/,/g, '.').replace(/[′’]/g, "'").replace(/[″”]/g, '"');
+  if (t === '') return { pies: 0, pulgadas: 0 };
+  const redondear = (n: number) => Math.round(n * 1e6) / 1e6;
+  const piesDecimales = (txt: string) => {
+    const n = Number(txt);
+    const pies = Math.floor(n);
+    return { pies, pulgadas: redondear((n - pies) * PULGADAS_POR_PIE) };
+  };
+  const pulgadas = (txt: string) => {
+    const r = leerPulgadasFraccion(txt.replace(/\s*(?:"|in)$/i, ''));
+    return 'error' in r ? r : { pies: 0, pulgadas: r.valor };
+  };
+  let m: RegExpMatchArray | null;
+  // Solo pies: entero o decimal, con o sin marca de pies.
+  if ((m = t.match(/^(\d+(?:\.\d*)?|\.\d+) ?(?:'|ft)?$/i))) return piesDecimales(m[1]);
+  // Solo pulgadas: fracción sola, o número con marca de pulgadas.
+  if (/^\d+ ?\/ ?\d+ ?(?:"|in)?$/i.test(t) || /^[\d./ -]+ ?(?:"|in)$/i.test(t) && !/'|ft/i.test(t)) return pulgadas(t);
+  // Pies enteros + pulgadas: "5 1/4", "5-1/4", "5' 1/4", "5' 7 1/2\"", "5ft 7".
+  if ((m = t.match(/^(\d+) ?(?:(?:'|ft) ?-? ?|- ?| )(\S.*)$/i))) {
+    const r = pulgadas(m[2]);
+    return 'error' in r ? r : { pies: Number(m[1]), pulgadas: r.pulgadas };
+  }
+  return { error: 'distance.err.feetInvalid' };
 }
 
 /**
- * Evalúa los textos de los campos "ft" (entero) e "in" (fracción) y devuelve los metros
+ * Evalúa los textos de los campos "ft" (ver leerCampoPies) e "in" (fracción) y devuelve los metros
  * (usa SIEMPRE pies y pulgadas) o la clave del error. Campo vacío = 0; ambos vacíos es error.
  * Ej.: ('65', '7 3/8') → 19.99901 m; ('3', '6') → 1.0668 m; ('', '42') → 1.0668 m.
  */
@@ -243,11 +273,12 @@ export function evaluarPiesPulgadas(
   permitirCero = true,
 ): { metros: number; pies: number; pulgadas: number } | { error: ErrorDistancia } {
   if (textoPies.trim() === '' && textoPulgadas.trim() === '') return { error: 'distance.err.empty' };
-  const p = leerPiesEnteros(textoPies);
+  const p = leerCampoPies(textoPies);
   if ('error' in p) return p;
   const i = textoPulgadas.trim() === '' ? { valor: 0 } : leerPulgadasFraccion(textoPulgadas);
   if ('error' in i) return i;
-  const metros = piesPulgadasAMetros(p.valor, i.valor);
+  const pulgadas = p.pulgadas + i.valor;
+  const metros = piesPulgadasAMetros(p.pies, pulgadas);
   const err = validarDistanciaMetros(metros, permitirCero);
-  return err ? { error: err } : { metros, pies: p.valor, pulgadas: i.valor };
+  return err ? { error: err } : { metros, pies: p.pies, pulgadas };
 }

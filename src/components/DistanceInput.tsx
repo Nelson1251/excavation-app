@@ -1,7 +1,10 @@
 // Campo reutilizable para capturar una distancia. El valor siempre se entrega en metros.
 // - Sistema métrico: un solo campo numérico en metros.
-// - Sistema imperial: pies ("ft", enteros) y pulgadas ("in", texto con fracciones como en obra:
-//   7, 3/4, 7 1/2, 7-1/2, 11 15/16; también 7.5). 12 pulgadas o más se pasan a pies al salir del campo.
+// - Sistema imperial: pies ("ft") y pulgadas ("in"), ambos campos de TEXTO. Nunca type="number": Chrome/Edge
+//   descartan en silencio "/" y " " en esos campos ("1/4" aparecía como "14"). Pulgadas con fracciones como en
+//   obra (7, 3/4, 7 1/2, 7-1/2, 11 15/16; también 7.5). El campo de pies acepta además todo junto ("5 1/4",
+//   "5' 7 1/2\"", "5.5") o una fracción sola ("1/4" = pulgadas); al salir del campo se reparte en pies enteros +
+//   pulgadas < 12.
 import { useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useT } from '../i18n/useT';
@@ -108,9 +111,8 @@ function CamposImperiales({
   /** Valida ambos campos (pies enteros + pulgadas con fracción); devuelve metros o la clave del error. */
   const evaluar = (tPies: string, tPulg: string) => evaluarPiesPulgadas(tPies, tPulg, permitirCero);
 
-  // `piesInvalidos`: el navegador rechazó el texto del campo numérico de pies (value llega vacío).
-  const actualizar = (tPies: string, tPulg: string, piesInvalidos = false) => {
-    const r = piesInvalidos ? { error: 'distance.err.feetInteger' as const } : evaluar(tPies, tPulg);
+  const actualizar = (tPies: string, tPulg: string) => {
+    const r = evaluar(tPies, tPulg);
     if ('error' in r) {
       setError(r.error);
       onChange(null);
@@ -120,13 +122,17 @@ function CamposImperiales({
     }
   };
 
-  // Al salir de un campo: si hay 12" o más, pasar el excedente a pies (3' 18" → 4' 6"; 0' 13 1/2" → 1' 1 1/2").
+  // Al salir de un campo: dejar pies enteros + pulgadas < 12. Pasa el excedente a pies (3' 18" → 4' 6") y reparte
+  // lo escrito todo junto en el campo de pies ("5 1/4" → 5 | 1/4; "1/4" → 0 | 1/4; "5.5" → 5 | 6).
   const normalizar = () => {
     const r = evaluar(pies, pulg);
-    if ('error' in r || r.pulgadas < PULGADAS_POR_PIE) return;
+    if ('error' in r) return;
+    const piesSimples = /^\d*$/.test(pies.trim());
+    if (piesSimples && r.pulgadas < PULGADAS_POR_PIE) return;
     const extraPies = Math.floor(r.pulgadas / PULGADAS_POR_PIE);
     const tPies = String(r.pies + extraPies);
-    const tPulg = textoCampoPulgadas(r.pulgadas - extraPies * PULGADAS_POR_PIE);
+    const resto = r.pulgadas - extraPies * PULGADAS_POR_PIE;
+    const tPulg = resto === 0 && pulg.trim() === '' ? '' : textoCampoPulgadas(resto);
     setPies(tPies);
     setPulg(tPulg);
     actualizar(tPies, tPulg);
@@ -144,14 +150,13 @@ function CamposImperiales({
       <div className="flex items-center gap-1.5">
         <input
           id={id}
-          type="number"
-          inputMode="numeric"
-          min="0"
-          step="1"
+          type="text"
+          inputMode="text"
+          autoComplete="off"
           value={pies}
           onChange={(e) => {
             setPies(e.target.value);
-            actualizar(e.target.value, pulg, e.target.validity.badInput);
+            actualizar(e.target.value, pulg);
           }}
           onBlur={normalizar}
           aria-label={t('distance.ftAria', { label: etiqueta })}
