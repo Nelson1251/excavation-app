@@ -12,7 +12,13 @@ const commit = (() => {
   try {
     return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
   } catch {
-    return 'dev'
+    // Sin git (zip descargado de GitHub): GitHub sustituye $Format:%h$ en commit.txt (export-subst).
+    try {
+      const c = readFileSync(new URL('./commit.txt', import.meta.url), 'utf8').trim()
+      return c && !c.startsWith('$Format') ? c : 'dev'
+    } catch {
+      return 'dev'
+    }
   }
 })()
 const fecha = new Date().toISOString().slice(0, 10)
