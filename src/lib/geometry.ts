@@ -63,3 +63,70 @@ export function isSimplePolygon(points: Point[]): boolean {
   anillo.push([points[0].x, points[0].y]);
   return kinks(polygon([anillo])).features.length === 0;
 }
+
+// ---------------------------------------------------------------------------
+// Dibujo en el lienzo
+// ---------------------------------------------------------------------------
+
+/** Movimiento mínimo del puntero (px de pantalla) para que un clic se considere arrastre. */
+export const DRAG_THRESHOLD_PX = 5;
+/** Radio (px de pantalla) alrededor del primer vértice que cierra el polígono al hacer clic. */
+export const CLOSE_RADIUS_PX = 10;
+
+/** true si el puntero se movió más de `umbralPx` entre `a` y `b` (coordenadas de pantalla). */
+export function isDrag(a: Point, b: Point, umbralPx = DRAG_THRESHOLD_PX): boolean {
+  return distance(a, b) > umbralPx;
+}
+
+/**
+ * Rectángulo (4 vértices, empezando por la esquina superior izquierda y en sentido horario en
+ * pantalla) a partir de las esquinas opuestas de un arrastre, en cualquier dirección.
+ */
+export function rectFromDrag(a: Point, b: Point): Point[] {
+  const x0 = Math.min(a.x, b.x);
+  const x1 = Math.max(a.x, b.x);
+  const y0 = Math.min(a.y, b.y);
+  const y1 = Math.max(a.y, b.y);
+  return [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 },
+  ];
+}
+
+/** Convierte un punto del plano (unidades PDF) a píxeles de pantalla con la vista (zoom y desplazamiento). */
+export function planToScreen(p: Point, vista: { zoom: number; x: number; y: number }): Point {
+  return { x: p.x * vista.zoom + vista.x, y: p.y * vista.zoom + vista.y };
+}
+
+/** Convierte un punto de pantalla (px relativos al lienzo) a unidades PDF (inverso de planToScreen). */
+export function screenToPlan(p: Point, vista: { zoom: number; x: number; y: number }): Point {
+  return { x: (p.x - vista.x) / vista.zoom, y: (p.y - vista.y) / vista.zoom };
+}
+
+/**
+ * Centroide del área de un polígono (para colocar la etiqueta). Si el área es nula
+ * (polígono degenerado) devuelve el promedio de los vértices.
+ */
+export function polygonCentroid(points: Point[]): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  let a = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const q = points[(i + 1) % points.length];
+    const f = p.x * q.y - q.x * p.y;
+    a += f;
+    cx += (p.x + q.x) * f;
+    cy += (p.y + q.y) * f;
+  }
+  if (Math.abs(a) < 1e-9) {
+    return {
+      x: points.reduce((s, p) => s + p.x, 0) / points.length,
+      y: points.reduce((s, p) => s + p.y, 0) / points.length,
+    };
+  }
+  return { x: cx / (3 * a), y: cy / (3 * a) };
+}

@@ -11,7 +11,9 @@ import type {
   Herramienta,
   Idioma,
   Modulo,
+  OrigenEscala,
   PdfSource,
+  Point,
   ProjectState,
   SistemaUnidades,
   Vista,
@@ -27,9 +29,16 @@ interface ProjectActions {
   setPdfSource: (source: PdfSource) => void;
   setPageIndex: (index: number) => void;
   setNumPaginas: (n: number) => void;
-  setScale: (metersPerPdfUnit: number | null) => void;
-  /** Agrega una zona. Con `nombre: ''` se muestra un nombre por defecto en el idioma actual ("Zone n" / "Zona n"). */
-  addZone: (zone: Omit<Zone, 'id'>) => void;
+  /** Fija la escala (metros por unidad PDF) y su origen; null = sin calibrar. */
+  setScale: (metersPerPdfUnit: number | null, origen?: OrigenEscala | null) => void;
+  /** Puntos de la línea de calibración (0, 1 o 2) en unidades PDF. */
+  setPuntosCalibracion: (puntos: Point[]) => void;
+  /**
+   * Agrega una zona y devuelve su id. Con `nombre: ''` se muestra un nombre por defecto en el
+   * idioma actual ("Zone n" / "Zona n").
+   */
+  addZone: (zone: Omit<Zone, 'id'>) => string;
+  setZonaSeleccionada: (id: string | null) => void;
   /** Actualiza propiedades de una zona (p. ej. profundidad o soilType; soilType: undefined = sin especificar). */
   updateZone: (id: string, cambios: Partial<Omit<Zone, 'id'>>) => void;
   removeZone: (id: string) => void;
@@ -57,7 +66,7 @@ interface ProjectActions {
 export type ProjectStore = ProjectState & ProjectActions;
 
 // Zonas de ejemplo alineadas con el plano de prueba (public/sample-plan.pdf).
-// TODO: eliminar cuando exista la herramienta de dibujo de polígonos.
+// Se quitan automáticamente al cargar otro PDF (no corresponden a ese plano).
 const zonasEjemplo: Zone[] = [
   {
     id: 'z-ejemplo-1',
@@ -129,14 +138,17 @@ const nuevoId = () =>
     ? crypto.randomUUID()
     : `z-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-export const useProjectStore = create<ProjectStore>()((set) => ({
+export const useProjectStore = create<ProjectStore>()((set, get) => ({
   // --- Estado inicial ---
   pdfSource: { tipo: 'url', url: '/sample-plan.pdf', nombre: 'sample-plan.pdf' },
   pageIndex: 0,
   numPaginas: 0,
   // Escala por defecto 1:500 (la del plano de prueba). Se reemplazará con la calibración.
   metersPerPdfUnit: metersPerPdfUnitFromRatio(500),
+  origenEscala: { tipo: 'ejemplo' },
+  puntosCalibracion: [],
   zones: zonasEjemplo,
+  zonaSeleccionada: null,
   factors: { abundamiento: 0.25, contraccion: 0.1, capacidadCamion: 14 },
   herramienta: 'navegar',
   vista: { zoom: 1, x: 0, y: 0 },
@@ -155,17 +167,43 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
       if (s.pdfSource?.tipo === 'archivo' && s.pdfSource.url !== source.url) {
         URL.revokeObjectURL(s.pdfSource.url);
       }
-      return { pdfSource: source, pageIndex: 0, numPaginas: 0 };
+      if (s.pdfSource?.url === source.url) return { pdfSource: source, pageIndex: 0, numPaginas: 0 };
+      // Plano distinto: la escala 1:500 y las zonas de ejemplo solo valen para el plano de prueba,
+      // y una calibración anterior pertenece al plano anterior. Hay que calibrar el nuevo plano.
+      const zones = s.zones.filter((z) => !z.nombreClave);
+      return {
+        pdfSource: source,
+        pageIndex: 0,
+        numPaginas: 0,
+        metersPerPdfUnit: null,
+        origenEscala: null,
+        puntosCalibracion: [],
+        zones,
+        zonaSeleccionada: zones.some((z) => z.id === s.zonaSeleccionada) ? s.zonaSeleccionada : null,
+      };
     }),
   setPageIndex: (index) => set({ pageIndex: Math.max(0, index) }),
   setNumPaginas: (n) => set({ numPaginas: n }),
-  setScale: (metersPerPdfUnit) => set({ metersPerPdfUnit }),
-  addZone: (zone) => set((s) => ({ zones: [...s.zones, { ...zone, id: nuevoId() }] })),
+  setScale: (metersPerPdfUnit, origen = null) =>
+    set({ metersPerPdfUnit, origenEscala: metersPerPdfUnit ? origen : null }),
+  setPuntosCalibracion: (puntosCalibracion) => set({ puntosCalibracion: puntosCalibracion.slice(0, 2) }),
+  addZone: (zone) => {
+    const id = nuevoId();
+    set({ zones: [...get().zones, { ...zone, id }] });
+    return id;
+  },
+  setZonaSeleccionada: (zonaSeleccionada) => set({ zonaSeleccionada }),
   updateZone: (id, cambios) =>
     set((s) => ({ zones: s.zones.map((z) => (z.id === id ? { ...z, ...cambios } : z)) })),
-  removeZone: (id) => set((s) => ({ zones: s.zones.filter((z) => z.id !== id) })),
+  removeZone: (id) =>
+    set((s) => ({
+      zones: s.zones.filter((z) => z.id !== id),
+      zonaSeleccionada: s.zonaSeleccionada === id ? null : s.zonaSeleccionada,
+    })),
   setFactors: (factors) => set((s) => ({ factors: { ...s.factors, ...factors } })),
-  setHerramienta: (herramienta) => set({ herramienta }),
+  // Al salir de la herramienta Calibrar se descarta la línea a medio marcar.
+  setHerramienta: (herramienta) =>
+    set((s) => ({ herramienta, puntosCalibracion: herramienta === 'calibrar' ? s.puntosCalibracion : [] })),
   setVista: (vista) =>
     set((s) => ({
       vista: { ...s.vista, ...vista, zoom: limitarZoom(vista.zoom ?? s.vista.zoom) },

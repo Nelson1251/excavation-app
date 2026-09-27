@@ -20,6 +20,7 @@ function Boton({
     <button
       type="button"
       title={title}
+      aria-pressed={activo}
       onClick={onClick}
       className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
         activo
@@ -101,7 +102,7 @@ export default function Toolbar() {
     e.target.value = ''; // permitir volver a elegir el mismo archivo
   };
 
-  // Alternar herramienta (stub: todavía no hay interacción en el lienzo).
+  // Alternar herramienta: un segundo clic vuelve a Navegar.
   const alternar = (h: Herramienta) => setHerramienta(herramienta === h ? 'navegar' : h);
 
   return (
@@ -137,12 +138,13 @@ export default function Toolbar() {
 
           <div className="mx-2 h-6 w-px bg-slate-700" />
 
-          {/* TODO: implementar la calibración de escala en el lienzo */}
-          <Boton onClick={() => alternar('calibrar')} activo={herramienta === 'calibrar'} title={t('common.comingSoon')}>
+          <Boton onClick={() => setHerramienta('navegar')} activo={herramienta === 'navegar'} title={t('toolbar.pan.title')}>
+            {t('toolbar.pan')}
+          </Boton>
+          <Boton onClick={() => alternar('calibrar')} activo={herramienta === 'calibrar'} title={t('toolbar.calibrate.title')}>
             {t('toolbar.calibrate')}
           </Boton>
-          {/* TODO: implementar el dibujo de polígonos de zona */}
-          <Boton onClick={() => alternar('dibujar')} activo={herramienta === 'dibujar'} title={t('common.comingSoon')}>
+          <Boton onClick={() => alternar('dibujar')} activo={herramienta === 'dibujar'} title={t('toolbar.drawZone.title')}>
             {t('toolbar.drawZone')}
           </Boton>
 

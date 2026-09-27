@@ -6,10 +6,20 @@ assigns each zone its kind (cut or fill), depth, soil type / fill material, and 
 volumes, material needed, net balance and truck trips.
 
 > Current status: **project skeleton (phase 0) + units, i18n, soils/fill materials, concrete and asphalt modules**.
-> PDF loading/zoom/pan works; scale calibration and zone drawing are still stubs. Excel/PDF export is not implemented
-> yet (see "Next steps").
+> PDF loading/zoom/pan, scale calibration (two points) and zone drawing (polygon or drag-rectangle) work. Excel/PDF
+> export is not implemented yet (see "Next steps").
 
 ## Usage
+
+- **Calibrate the scale**: press **📏 Calibrate scale**, click two points on the plan over a known distance (e.g. the
+  scale bar; you can also press-drag from one point to the other), type the real distance in the **Scale** panel
+  (meters, or feet + inches with fractions) and press **Apply** (or Enter). The scale is stored as meters per PDF unit.
+  Loading a different PDF resets the scale (the default 1:500 only applies to the sample plan).
+- **Draw a zone**: press **✏️ Draw zone**, then either **drag** to draw a rectangle, or **click** to add polygon
+  vertices and close it by clicking the first point, double-clicking or pressing **Enter**. **Backspace** removes the
+  last point, **Esc** cancels (Esc again returns to Pan). The new zone is selected in the list to set its name,
+  cut/fill, depth and soil. Area = shoelace (PDF units²) × scale²; without a calibrated scale the zone is still drawn
+  and its area appears as soon as you calibrate. Mouse, touch and pen all work; wheel = zoom, middle button = pan.
 
 - **Language**: `EN | ES` toggle in the top bar (default English). Saved in `localStorage`
   (`excavation-app:language-v2`; the old `excavation-app:language` key is ignored and removed so everyone starts
@@ -54,17 +64,20 @@ volumes, material needed, net balance and truck trips.
 ```
 src/
 ├── components/
-│   ├── Canvas.tsx            # Konva stage: PDF layer + zones layer; wheel zoom and pan
+│   ├── Canvas.tsx            # Konva stage: PDF layer + drawing layer; wheel zoom, pan, tool hints
+│   ├── DrawingLayer.tsx      # zones (filled polygons + name/area), polygon/rectangle draft, calibration line
+│   ├── useCanvasTools.ts     # pointer/keyboard logic of the Calibrate and Draw zone tools
 │   ├── Toolbar.tsx           # module tabs, Load PDF, Calibrate, Draw zone, zoom, Meters|Feet, EN|ES
 │   ├── ZoneList.tsx          # zones (soil / fill material, swell, shrink, volumes) and totals
-│   ├── ScaleCalibration.tsx  # calibration panel (stub)
+│   ├── ScaleCalibration.tsx  # calibration panel: current scale, steps, real distance + Apply
 │   ├── DistanceInput.tsx     # distance input: meters field or ft + in fields
 │   └── modules/              # ConcretePanel, AsphaltPanel and shared ElementFields
 ├── i18n/                     # en.ts (keys), es.ts (same keys, type-checked), index.ts (t), useT.ts (hook)
 ├── lib/
 │   ├── units.ts              # unit conversion and formatting (ft-in, ft², yd³, short tons…)
 │   ├── soils.ts              # soil types (swell) and fill materials (shrink) with documented ranges
-│   ├── geometry.ts           # shoelace area, PDF units → meters
+│   ├── geometry.ts           # shoelace area, scale, drag → rectangle, screen ↔ plan, centroid
+│   ├── zones.ts              # zone display name helpers
 │   ├── volumes.ts            # zone volumes (bank / compacted / material needed / loose) and totals
 │   ├── factors.ts            # swell, shrink, truck trips
 │   ├── concrete.ts           # concrete volumes
@@ -99,15 +112,14 @@ npm install          # install dependencies
 npm run dev          # dev server (http://localhost:5173)
 npm run build        # type check + production build into dist/
 npm run lint         # oxlint
-npm test             # quick checks of the pure modules (units, soils, volumes, concrete, asphalt, i18n)
+npm test             # quick checks of the pure modules (units, geometry, soils, volumes, concrete, asphalt, i18n)
 npm run preview      # serve the production build
 npm run sample-pdf   # regenerate public/sample-plan.pdf (English labels, metric 1:500 plan)
 ```
 
 ## Next steps
 
-1. Scale calibration on the canvas (two points over a known distance).
-2. Zone drawing (polygons, vertex editing, Turf self-intersection check).
-3. Editable project factors; multiple pages; holes.
-4. Export: Excel (SheetJS) and annotated PDF (pdf-lib) — zones, concrete and asphalt sheets, translated via `t()`.
-5. Project persistence (JSON / IndexedDB) and undo/redo.
+1. Vertex editing of existing zones (drag vertices, insert/delete points); snapping.
+2. Editable project factors; multiple pages; holes.
+3. Export: Excel (SheetJS) and annotated PDF (pdf-lib) — zones, concrete and asphalt sheets, translated via `t()`.
+4. Project persistence (JSON / IndexedDB) and undo/redo.

@@ -1,7 +1,7 @@
 // Lista de zonas con área, profundidad, tipo de suelo (corte) o material de relleno (relleno),
 // abundamiento, contracción y volúmenes (en banco / compactado, material necesario y suelto),
 // más totales preliminares. Todo se calcula en m / m² / m³ y solo se convierte al mostrar.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useT } from '../i18n/useT';
 import type { Clave, Traductor } from '../i18n';
@@ -23,6 +23,7 @@ import {
   pistaContraccion,
   type OrigenAbundamiento,
 } from '../lib/soils';
+import { esTipoZona, nombreZona } from '../lib/zones';
 import type { Zone } from '../types';
 import DistanceInput from './DistanceInput';
 
@@ -31,9 +32,6 @@ const ABUNDAMIENTO_MAX_PCT = 200;
 const CONTRACCION_MAX_PCT = 90;
 const pct = (fraccion: number) => `${fmt(fraccion * 100, fraccion * 100 === Math.round(fraccion * 100) ? 0 : 1)}%`;
 
-/** Nombre visible de una zona: clave i18n (ejemplos) → nombre del usuario → "Zone n"/"Zona n" traducido. */
-const nombreZona = (z: Zone, indice: number, t: Traductor) =>
-  z.nombreClave ? t(z.nombreClave) : z.nombre.trim() || t('zone.defaultName', { n: indice + 1 });
 
 /** Texto traducido del origen de un factor. */
 const textoOrigen = (origen: OrigenAbundamiento, esRelleno: boolean, t: Traductor) =>
@@ -148,7 +146,18 @@ export default function ZoneList() {
   const removeZone = useProjectStore((s) => s.removeZone);
   const updateZone = useProjectStore((s) => s.updateZone);
   const sistema = useProjectStore((s) => s.sistemaUnidades);
+  const seleccionada = useProjectStore((s) => s.zonaSeleccionada);
+  const setSeleccionada = useProjectStore((s) => s.setZonaSeleccionada);
   const vol = (m3: number) => formatearVolumen(m3, sistema);
+  const listaRef = useRef<HTMLUListElement>(null);
+
+  // Al seleccionar una zona (p. ej. recién dibujada) se desplaza la lista hasta ella.
+  useEffect(() => {
+    if (!seleccionada) return;
+    listaRef.current
+      ?.querySelector(`[data-zone-id="${CSS.escape(seleccionada)}"]`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [seleccionada]);
 
   const filas = zones.map((z) => {
     const area = metersPerPdfUnit ? polygonAreaM2(z.puntos, metersPerPdfUnit) : null;
@@ -179,16 +188,32 @@ export default function ZoneList() {
     <section className="flex flex-col gap-3">
       <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
         <h2 className="mb-2 text-sm font-semibold text-slate-200">{t('zones.heading', { count: zones.length })}</h2>
+        {!metersPerPdfUnit && filas.length > 0 && (
+          <p role="status" className="mb-2 rounded-md bg-amber-500/15 px-2 py-1 text-xs text-amber-300">
+            {t('zones.needsScale')}
+          </p>
+        )}
         {filas.length === 0 ? (
           <p className="text-xs text-slate-500">{t('zones.empty')}</p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul ref={listaRef} className="flex flex-col gap-2">
             {filas.map(({ zona: z, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes }, indice) => {
               const esRelleno = z.tipo === 'relleno';
               const etiquetaProfundidad = t(esRelleno ? 'zone.thickness' : 'zone.depth');
               const claveTipo: Clave = `zoneType.${z.tipo}`;
               return (
-                <li key={z.id} className="rounded-md border border-slate-800 bg-slate-950/60 p-2 text-xs">
+                <li
+                  key={z.id}
+                  data-zone-id={z.id}
+                  aria-current={z.id === seleccionada ? 'true' : undefined}
+                  onClick={() => setSeleccionada(z.id)}
+                  onFocusCapture={() => setSeleccionada(z.id)}
+                  className={`rounded-md border p-2 text-xs transition-colors ${
+                    z.id === seleccionada
+                      ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/60'
+                      : 'border-slate-800 bg-slate-950/60'
+                  }`}
+                >
                   <div className="mb-1 flex items-center justify-between">
                     <span className="font-medium text-slate-100">{nombreZona(z, indice, t)}</span>
                     <div className="flex items-center gap-2">
@@ -201,7 +226,10 @@ export default function ZoneList() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => removeZone(z.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeZone(z.id);
+                        }}
                         className="text-slate-500 hover:text-red-400"
                         title={t('zones.delete')}
                         aria-label={t('zones.delete')}
@@ -265,6 +293,37 @@ export default function ZoneList() {
                       <dd>{volumenes ? vol(volumenes.suelto) : '—'}</dd>
                     </div>
                   </dl>
+                  <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                    <div className="min-w-0">
+                      <label htmlFor={`nombre-${z.id}`} className={claseEtiquetaCampo}>
+                        {t('zone.name')}
+                      </label>
+                      <input
+                        id={`nombre-${z.id}`}
+                        type="text"
+                        value={z.nombreClave ? t(z.nombreClave) : z.nombre}
+                        placeholder={t('zone.defaultName', { n: indice + 1 })}
+                        onChange={(e) => updateZone(z.id, { nombre: e.target.value, nombreClave: undefined })}
+                        className={claseSelect}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`tipo-${z.id}`} className={claseEtiquetaCampo}>
+                        {t('zone.type')}
+                      </label>
+                      <select
+                        id={`tipo-${z.id}`}
+                        value={z.tipo}
+                        onChange={(e) => {
+                          if (esTipoZona(e.target.value)) updateZone(z.id, { tipo: e.target.value });
+                        }}
+                        className={claseSelect}
+                      >
+                        <option value="corte">{t('zoneType.corte')}</option>
+                        <option value="relleno">{t('zoneType.relleno')}</option>
+                      </select>
+                    </div>
+                  </div>
                   <div className="mt-2">
                     <DistanceInput
                       id={`profundidad-${z.id}`}

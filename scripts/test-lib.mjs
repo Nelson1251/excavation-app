@@ -1,5 +1,6 @@
 // Prueba rápida (sin dependencias extra) de los módulos puros de src/lib:
-// units.ts (conversión/formato), factors.ts, volumes.ts y soils.ts (abundamiento y contracción).
+// units.ts (conversión/formato), factors.ts, volumes.ts, soils.ts (abundamiento y contracción) y
+// geometry.ts (área shoelace, escala, rectángulo por arrastre, conversión pantalla ↔ plano).
 // Transpila los módulos con el compilador de TypeScript ya instalado y los importa desde un
 // directorio temporal. Uso: npm test
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, mkdirSync, existsSync } from 'node:fs';
@@ -11,8 +12,10 @@ import ts from 'typescript';
 
 const raiz = join(fileURLToPath(import.meta.url), '..', '..');
 // Módulos puros a probar (rutas relativas a src/, sin extensión).
-const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index'];
-const dir = mkdtempSync(join(tmpdir(), 'lib-'));
+const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index', 'lib/geometry'];
+// El directorio temporal va dentro de node_modules para que las dependencias (p. ej. @turf/turf en
+// geometry.ts) se resuelvan desde los archivos transpilados; node_modules está en .gitignore.
+const dir = mkdtempSync(join(existsSync(join(raiz, 'node_modules')) ? join(raiz, 'node_modules') : tmpdir(), '.test-lib-'));
 for (const m of modulos) {
   const fuente = readFileSync(join(raiz, `src/${m}.ts`), 'utf8');
   const { outputText } = ts.transpileModule(fuente, {
@@ -27,7 +30,7 @@ for (const m of modulos) {
   writeFileSync(join(dir, `${m}.mjs`), js);
 }
 const cargar = (m) => import(pathToFileURL(join(dir, `${m}.mjs`)).href);
-const [u, f, v, s, c, a, enMod, esMod, i18n] = await Promise.all(modulos.map(cargar));
+const [u, f, v, s, c, a, enMod, esMod, i18n, g] = await Promise.all(modulos.map(cargar));
 rmSync(dir, { recursive: true, force: true });
 const tEn = i18n.crearTraductor('en');
 const tEs = i18n.crearTraductor('es');
@@ -278,6 +281,61 @@ for (const [nombre, dic] of [['en', enMod.en], ['es', esMod.es]]) {
     ok++;
   }
 }
+
+// --- Geometría (dibujo de zonas y calibración) ---
+// Área shoelace en unidades PDF², independiente del sentido de giro.
+const rect240x160 = [{ x: 380, y: 300 }, { x: 620, y: 300 }, { x: 620, y: 460 }, { x: 380, y: 460 }];
+cerca(g.shoelaceArea(rect240x160), 38400, 'shoelace rectángulo 240×160');
+cerca(g.shoelaceArea([...rect240x160].reverse()), 38400, 'shoelace sentido antihorario');
+cerca(g.shoelaceArea([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 5 }]), 25, 'shoelace triángulo');
+// Polígono en L (100×100 menos un cuadrado de 50×50) = 7500.
+const ele = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 50, y: 50 }, { x: 50, y: 100 }, { x: 0, y: 100 }];
+cerca(g.shoelaceArea(ele), 7500, 'shoelace polígono en L (cóncavo)');
+cerca(g.shoelaceArea([{ x: 0, y: 0 }, { x: 5, y: 5 }]), 0, 'shoelace con 2 puntos = 0');
+cerca(g.shoelaceArea([{ x: 0, y: 0 }, { x: 5, y: 5 }, { x: 10, y: 10 }]), 0, 'shoelace colineal = 0');
+
+// Escala: 1:500 impreso a tamaño real → 500 × 0.0254 / 72 m por unidad PDF.
+const m500 = (500 * 0.0254) / 72;
+cerca(g.metersPerPdfUnitFromRatio(500), m500, 'escala 1:500');
+// Calibración con la barra de 20 m del plano de ejemplo (113.386 u. PDF de largo) → misma escala.
+const barraU = 20 / m500;
+cerca(g.metersPerPdfUnitFromReference({ x: 60, y: 745 }, { x: 60 + barraU, y: 745 }, 20), m500, 'calibración con barra de 20 m');
+// Línea inclinada 3-4-5: 50 u. PDF = 10 m → 0.2 m/u.
+cerca(g.metersPerPdfUnitFromReference({ x: 0, y: 0 }, { x: 30, y: 40 }, 10), 0.2, 'calibración línea inclinada');
+igual(g.metersPerPdfUnitFromReference({ x: 5, y: 5 }, { x: 5, y: 5 }, 10), null, 'calibración con puntos iguales = null');
+// Calibración en pies: 65' 7 3/8" (= 20 m) sobre la barra da la misma escala.
+cerca(g.metersPerPdfUnitFromReference({ x: 0, y: 0 }, { x: barraU, y: 0 }, u.piesPulgadasAMetros(65, 7.375)), m500, 'calibración en pies y pulgadas (redondeo a 1/8")', 1e-5);
+// Área real = shoelace × escala²: la plataforma de ejemplo (240×160 u.) a 1:500 = 1194.72 m².
+cerca(g.polygonAreaM2(rect240x160, m500), 38400 * m500 * m500, 'área m² = shoelace × escala²');
+cerca(g.polygonAreaM2(rect240x160, m500), 1194.7407, 'plataforma de ejemplo en m² (42.33 × 28.22 m)', 1e-3);
+cerca(g.pdfAreaToSquareMeters(100, 0.5), 25, 'u.PDF² → m² (escala al cuadrado)');
+cerca(g.pdfUnitsToMeters(100, 0.5), 50, 'u.PDF → m');
+cerca(g.polygonAreaM2([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }], 0.2), 4, 'cuadrado 10 u. a 0.2 m/u = 4 m²');
+// En modo Pies el área se muestra en ft² (nunca m²).
+igual(u.formatearArea(g.polygonAreaM2(rect240x160, m500), 'imperial'), '12,860.08 ft²', 'área de la plataforma en ft²');
+igual(u.formatearArea(g.polygonAreaM2(rect240x160, m500), 'metrico'), '1,194.74 m²', 'área de la plataforma en m²');
+
+// Rectángulo a partir de un arrastre: mismas 4 esquinas en cualquier dirección.
+const esperadoRect = [{ x: 10, y: 20 }, { x: 110, y: 20 }, { x: 110, y: 70 }, { x: 10, y: 70 }];
+igual(g.rectFromDrag({ x: 10, y: 20 }, { x: 110, y: 70 }), esperadoRect, 'rect arrastre ↘');
+igual(g.rectFromDrag({ x: 110, y: 70 }, { x: 10, y: 20 }), esperadoRect, 'rect arrastre ↖');
+igual(g.rectFromDrag({ x: 110, y: 20 }, { x: 10, y: 70 }), esperadoRect, 'rect arrastre ↙');
+igual(g.rectFromDrag({ x: 10, y: 70 }, { x: 110, y: 20 }), esperadoRect, 'rect arrastre ↗');
+cerca(g.shoelaceArea(g.rectFromDrag({ x: 10, y: 20 }, { x: 110, y: 70 })), 5000, 'área del rect arrastrado');
+igual(g.isSimplePolygon(g.rectFromDrag({ x: 10, y: 20 }, { x: 110, y: 70 })), true, 'rect arrastrado es simple');
+// Umbral de arrastre (px de pantalla): más de 5 px = rectángulo; menos = clic (polígono).
+igual(g.isDrag({ x: 0, y: 0 }, { x: 3, y: 4 }), false, '5 px = clic');
+igual(g.isDrag({ x: 0, y: 0 }, { x: 6, y: 0 }), true, '6 px = arrastre');
+igual(g.isDrag({ x: 0, y: 0 }, { x: 2, y: 2 }, 2), true, 'umbral configurable');
+// Polígono que se cruza (moño) → no simple.
+igual(g.isSimplePolygon([{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 10, y: 0 }, { x: 0, y: 10 }]), false, 'moño no es simple');
+// Pantalla ↔ plano con paneo y zoom (inversa exacta).
+const vista = { zoom: 2.5, x: 120, y: -40 };
+igual(g.planToScreen({ x: 100, y: 200 }, vista), { x: 370, y: 460 }, 'plano → pantalla');
+igual(g.screenToPlan({ x: 370, y: 460 }, vista), { x: 100, y: 200 }, 'pantalla → plano');
+// Centroide (posición de la etiqueta).
+igual(g.polygonCentroid(rect240x160), { x: 500, y: 380 }, 'centroide del rectángulo');
+igual(g.polygonCentroid([{ x: 0, y: 0 }, { x: 4, y: 0 }]), { x: 2, y: 0 }, 'centroide degenerado = promedio');
 
 // i18n
 igual(i18n.traducir('en', 'zones.heading', { count: 3 }), 'Zones (3)', 'interpolación en');

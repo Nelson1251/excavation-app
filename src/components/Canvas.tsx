@@ -1,5 +1,6 @@
-// Lienzo interactivo: muestra la página del PDF como imagen de Konva
-// y deja una capa superior para los polígonos de zonas (fases siguientes).
+// Lienzo interactivo: muestra la página del PDF como imagen de Konva y, encima, la capa de
+// dibujo (zonas, polígono en curso y línea de calibración). Herramientas: Navegar (paneo),
+// Calibrar escala (dos puntos) y Dibujar zona (clics = polígono, arrastre = rectángulo).
 import { useEffect, useRef, useState } from 'react';
 import { Image as KonvaImage, Layer, Rect, Stage } from 'react-konva';
 import type Konva from 'konva';
@@ -8,7 +9,11 @@ import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useProjectStore } from '../store/projectStore';
 import { useT } from '../i18n/useT';
+import { polygonAreaM2, rectFromDrag } from '../lib/geometry';
+import { formatearArea } from '../lib/units';
 import type { PdfSource } from '../types';
+import DrawingLayer from './DrawingLayer';
+import { useCanvasTools } from './useCanvasTools';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -41,9 +46,11 @@ export default function Canvas() {
   const setVista = useProjectStore((s) => s.setVista);
   const setTamanoLienzo = useProjectStore((s) => s.setTamanoLienzo);
   const setNumPaginas = useProjectStore((s) => s.setNumPaginas);
+  const metersPerPdfUnit = useProjectStore((s) => s.metersPerPdfUnit);
+  const sistema = useProjectStore((s) => s.sistemaUnidades);
 
   const [resultado, setResultado] = useState<Resultado | null>(null);
-  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const { puntos, rect, cursor, aviso, handlers, limpiarCursor } = useCanvasTools(stageRef);
 
   // Observar el tamaño del contenedor para dimensionar el Stage.
   useEffect(() => {
@@ -144,13 +151,13 @@ export default function Canvas() {
     if (e.target === stageRef.current) setVista({ x: e.target.x(), y: e.target.y() });
   };
 
-  const onMouseMove = () => {
-    const p = stageRef.current?.getRelativePointerPosition();
-    setCursor(p ? { x: p.x, y: p.y } : null);
-  };
+  // Área en vivo del borrador (rectángulo en arrastre o polígono + cursor), si hay escala.
+  const borrador = rect ? rectFromDrag(rect.a, rect.b) : cursor && puntos.length >= 2 ? [...puntos, cursor] : null;
+  const areaBorrador = borrador && metersPerPdfUnit ? formatearArea(polygonAreaM2(borrador, metersPerPdfUnit), sistema) : null;
 
   return (
-    <div ref={contenedorRef} className="relative h-full w-full overflow-hidden bg-slate-950">
+    // touch-action: none → el navegador no desplaza ni hace zoom de la página al dibujar con el dedo o lápiz.
+    <div ref={contenedorRef} className="relative h-full w-full touch-none overflow-hidden bg-slate-950">
       {tamano.ancho > 0 && (
         <Stage
           ref={stageRef}
@@ -164,8 +171,14 @@ export default function Canvas() {
           onWheel={onWheel}
           onDragMove={onDrag}
           onDragEnd={onDrag}
-          onMouseMove={onMouseMove}
-          onMouseLeave={() => setCursor(null)}
+          onPointerDown={handlers.onPointerDown}
+          onPointerMove={handlers.onPointerMove}
+          onPointerUp={handlers.onPointerUp}
+          onPointerCancel={handlers.onPointerCancel}
+          onPointerLeave={limpiarCursor}
+          onContextMenu={(e) => {
+            if (herramienta !== 'navegar') e.evt.preventDefault();
+          }}
           className={herramienta === 'navegar' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}
         >
           {/* Capa inferior: plano PDF (coordenadas = unidades PDF) */}
@@ -184,8 +197,8 @@ export default function Canvas() {
               </>
             )}
           </Layer>
-          {/* Capa superior: polígonos de zonas. TODO: dibujar zonas y línea de calibración. */}
-          <Layer />
+          {/* Capa superior: zonas, borrador y línea de calibración (coordenadas = unidades PDF). */}
+          <DrawingLayer puntos={puntos} rect={rect} cursor={cursor} />
         </Stage>
       )}
 
@@ -199,6 +212,33 @@ export default function Canvas() {
               <span className="text-red-300">{t('canvas.error', { message: resultado?.error ?? '' })}</span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Instrucciones de la herramienta activa */}
+      {herramienta !== 'navegar' && estado === 'listo' && (
+        <div
+          className="pointer-events-none absolute left-1/2 top-2 flex max-w-[90%] -translate-x-1/2 flex-col items-center gap-1 text-center text-xs"
+          data-testid="canvas-hint"
+        >
+          <div className="rounded-md bg-slate-800/95 px-3 py-1.5 text-slate-100 shadow">
+            {t(herramienta === 'dibujar' ? 'canvas.hint.draw' : 'canvas.hint.calibrate')}
+          </div>
+          {herramienta === 'dibujar' && !metersPerPdfUnit && (
+            <div role="status" className="rounded-md bg-amber-500/95 px-3 py-1.5 font-medium text-slate-950 shadow">
+              {t('canvas.warn.noScale')}
+            </div>
+          )}
+          {aviso && (
+            <div role="alert" className="rounded-md bg-red-600/95 px-3 py-1.5 font-medium text-white shadow">
+              {t(aviso)}
+            </div>
+          )}
+          {areaBorrador && (
+            <div className="rounded-md bg-slate-900/90 px-2 py-1 tabular-nums text-amber-300 shadow">
+              {t('canvas.draftArea', { area: areaBorrador })}
+            </div>
+          )}
         </div>
       )}
 

@@ -75,6 +75,20 @@ export interface Vista {
   y: number;
 }
 
+/**
+ * De dónde sale la escala actual: la escala por defecto del plano de ejemplo (1:500) o una
+ * calibración del usuario con dos puntos sobre una distancia conocida.
+ */
+export type OrigenEscala =
+  | { tipo: 'ejemplo' }
+  | {
+      tipo: 'calibrada';
+      /** Distancia real de la línea de referencia, en metros. */
+      referenciaM: number;
+      /** Longitud medida de la línea de referencia, en unidades PDF. */
+      longitudPdf: number;
+    };
+
 /** Estado de datos del proyecto (sin acciones). */
 export interface ProjectState {
   pdfSource: PdfSource | null;
@@ -83,7 +97,13 @@ export interface ProjectState {
   numPaginas: number;
   /** Metros reales por unidad PDF. null = escala sin calibrar. */
   metersPerPdfUnit: number | null;
+  /** Origen de la escala (null = sin calibrar). */
+  origenEscala: OrigenEscala | null;
+  /** Puntos marcados en el lienzo con la herramienta Calibrar (0, 1 o 2), en unidades PDF. */
+  puntosCalibracion: Point[];
   zones: Zone[];
+  /** Zona seleccionada (resaltada en el lienzo y en la lista), o null. */
+  zonaSeleccionada: string | null;
   factors: Factors;
   herramienta: Herramienta;
   vista: Vista;
