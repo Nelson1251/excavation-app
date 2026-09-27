@@ -5,6 +5,7 @@ import type { Diccionario } from './en';
 export const es = {
   // --- App ---
   'app.title': 'Cubicación de excavación · Corte y relleno',
+  'app.versionTitle': 'Versión de la app · commit · fecha de compilación',
 
   // --- Barra superior ---
   'toolbar.heading': 'Cubicación · Corte y Relleno',
@@ -56,16 +57,17 @@ export const es = {
   'distance.ftAria': '{label}: pies',
   'distance.inAria': '{label}: pulgadas',
   'distance.hintMeters': 'Metros, p. ej. 1.5',
-  'distance.hintImperial': 'Pulgadas de 0 a 11.99 (admite decimales)',
-  'distance.hintImperialEq': 'Pulgadas de 0 a 11.99 (admite decimales) · = {meters} m',
+  'distance.inPlaceholder': 'p. ej. 7 1/2',
+  'distance.hintImperial': 'Pies enteros; pulgadas como 7, 3/4 o 7 1/2 (menos de 12)',
+  'distance.hintImperialEq': 'Pulgadas como 7, 3/4 o 7 1/2 · = {value}',
   'distance.err.negative': 'La distancia no puede ser negativa.',
   'distance.err.zero': 'La distancia debe ser mayor que cero.',
   'distance.err.metersInvalid': 'Ingresa un número válido en metros (p. ej. 1.5).',
   'distance.err.empty': 'Ingresa los pies y/o las pulgadas.',
-  'distance.err.feetInvalid': 'Pies: ingresa un número válido (p. ej. 3).',
-  'distance.err.inchesInvalid': 'Pulgadas: ingresa un número válido (p. ej. 6.5).',
-  'distance.err.negativeParts': 'Los pies y las pulgadas no pueden ser negativos.',
-  'distance.err.badInput': 'Ingresa solo números en pies y pulgadas (p. ej. 3 y 6.5).',
+  'distance.err.feetInteger': 'Pies: ingresa un número entero (p. ej. 65).',
+  'distance.err.inchesInvalid': 'Pulgadas: escribe p. ej. 7, 3/4, 7 1/2 o 7-1/2.',
+  'distance.err.denominator': 'Pulgadas: usa medios, cuartos, octavos o dieciseisavos (/2, /4, /8, /16).',
+  'distance.err.mixedFraction': 'Pulgadas: en un número mixto la fracción debe ser menor que 1 (p. ej. 7 1/2).',
 
   // --- Lista de zonas ---
   'zones.heading': 'Zonas ({count})',
@@ -73,6 +75,7 @@ export const es = {
   'zones.delete': 'Eliminar zona',
   'zone.sample.buildingPad': 'Plataforma edificio',
   'zone.sample.parking': 'Estacionamiento',
+  'zone.defaultName': 'Zona {n}',
   'zoneType.corte': 'Corte',
   'zoneType.relleno': 'Relleno',
   'zone.area': 'Área',
@@ -211,9 +214,10 @@ export const es = {
   // --- Asfalto ---
   'asphalt.heading': 'Elementos de asfalto ({count})',
   'asphalt.notesPlaceholder': 'Tipo de mezcla, compactación, especificaciones…',
-  'asphalt.density': 'Densidad compactada',
+  'asphalt.densityMetric': 'Densidad compactada (t/m³)',
+  'asphalt.densityImperial': 'Densidad compactada (lb/ft³)',
   'asphalt.densityHint.metric': 't/m³ · predeterminado 2.35 (mezcla asfáltica en caliente)',
-  'asphalt.densityHint.imperial': 'lb/ft³ · predeterminado ≈ 146.7 (mezcla en caliente, 2.35 t/m³)',
+  'asphalt.densityHint.imperial': 'lb/ft³ · predeterminado ≈ 146.7 (mezcla asfáltica en caliente)',
   'asphalt.note': 'Tonelaje = volumen a pedir × densidad compactada.',
   'asphaltType.calle': 'Calle / camino',
   'asphaltType.estacionamiento': 'Estacionamiento',

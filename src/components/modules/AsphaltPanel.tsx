@@ -107,7 +107,7 @@ function CampoDensidad() {
         // key: al cambiar de unidades se reinicia el texto con el valor convertido.
         key={sistema}
         id="densidad-asfalto"
-        etiqueta={t('asphalt.density')}
+        etiqueta={t(imperial ? 'asphalt.densityImperial' : 'asphalt.densityMetric')}
         valor={imperial ? tM3ALbFt3(densidad) : densidad}
         decimales={imperial ? 1 : 3}
         onChange={(n) => setDensidad(imperial ? lbFt3ATM3(n) : n)}

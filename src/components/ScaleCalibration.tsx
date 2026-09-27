@@ -20,7 +20,7 @@ export default function ScaleCalibration() {
   // TODO: al pulsar "Calibrar escala", el usuario marcará dos puntos en el lienzo;
   // luego se calculará metersPerPdfUnitFromReference(a, b, distanciaRealM) y se llamará a setScale().
   const aplicar = () => {
-    console.info('TODO: calibración pendiente. Distancia real (m):', distanciaRealM);
+    console.info('TODO: calibration pending. Real distance (m):', distanciaRealM);
   };
 
   // Equivalente 1:N suponiendo impresión a tamaño real (1 u. PDF = 1/72 in).
@@ -38,10 +38,8 @@ export default function ScaleCalibration() {
         })
       : t('scale.metric', { value: metersPerPdfUnit.toFixed(4), ratio: escalaAprox ?? '' });
 
-  const barra =
-    sistema === 'imperial'
-      ? `${formatearLongitud(BARRA_EJEMPLO_M, sistema)} (${BARRA_EJEMPLO_M} m)`
-      : `${BARRA_EJEMPLO_M} m`;
+  // En modo Pies solo pies-pulgadas (fracción a 1/8", igual que el valor inicial del campo: 65' 7 3/8").
+  const barra = formatearLongitud(BARRA_EJEMPLO_M, sistema, 0);
 
   return (
     <section className="rounded-lg border border-slate-800 bg-slate-900 p-3">

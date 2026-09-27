@@ -22,8 +22,9 @@ export type TipoZona = 'corte' | 'relleno';
 /** Zona (polígono) dibujada sobre el plano. */
 export interface Zone {
   id: string;
+  /** Nombre escrito por el usuario. Vacío = se muestra un nombre por defecto traducido ("Zone 3" / "Zona 3"). */
   nombre: string;
-  /** Clave i18n del nombre (solo zonas de ejemplo); si existe, se muestra traducida en lugar de `nombre`. */
+  /** Clave i18n del nombre (zonas de ejemplo); se traduce al mostrar y sigue el selector EN | ES. */
   nombreClave?: Clave;
   tipo: TipoZona;
   /** Vértices del polígono en unidades PDF. */

@@ -21,9 +21,9 @@ const cafe = rgb(0.55, 0.35, 0.15);
 const azul = rgb(0.1, 0.3, 0.7);
 
 const doc = await PDFDocument.create();
-doc.setTitle('Plano de prueba - Escala 1:500');
+doc.setTitle('Test plan - Scale 1:500');
 doc.setAuthor('excavation-app');
-doc.setSubject('Plano de sitio de ejemplo para cubicación de corte y relleno');
+doc.setSubject('Sample site plan for cut and fill quantity takeoff');
 doc.setProducer('pdf-lib');
 doc.setCreator('scripts/make-sample-pdf.mjs');
 // Fechas fijas para que el archivo generado sea reproducible.
@@ -50,8 +50,8 @@ rect(20, 20, W - 40, H - 40, { borderWidth: 2 });
 rect(30, 30, W - 60, H - 60, { borderWidth: 0.75 });
 
 // --- Título ---
-texto('Plano de prueba - Escala 1:500', 50, 62, 20, helvB);
-texto('Levantamiento topográfico y proyecto de terracerías (ejemplo)', 50, 80, 10, helv, gris);
+texto('Test plan - Scale 1:500', 50, 62, 20, helvB);
+texto('Topographic survey and earthwork design (sample)', 50, 80, 10, helv, gris);
 
 // --- Curvas de nivel (cada 1 m, maestras cada 5 m) ---
 const curvas = [
@@ -85,23 +85,23 @@ const lindero = [
   [100, 400],
 ];
 ruta(polilinea(lindero, true), { borderWidth: 1.6, borderDashArray: [14, 4, 2, 4] });
-texto('LINDERO', 460, 100, 8, helvB);
+texto('PROPERTY LINE', 445, 100, 8, helvB);
 
 // --- Camino de acceso (dos polilíneas paralelas) ---
 ruta(polilinea([[100, 555], [380, 530], [650, 548], [905, 540]]), { borderWidth: 1 });
 ruta(polilinea([[100, 585], [380, 560], [650, 578], [905, 570]]), { borderWidth: 1 });
-texto('CAMINO DE ACCESO', 180, 563, 7.5, helv, gris);
+texto('ACCESS ROAD', 190, 563, 7.5, helv, gris);
 
 // --- Edificio proyectado (zona de corte) ---
 rect(380, 300, 240, 160, { borderWidth: 1.8, color: rgb(0.95, 0.85, 0.85) });
-texto('EDIFICIO PROYECTADO', 435, 375, 10, helvB);
-texto('NPT 101.50', 468, 390, 9, helv);
+texto('PROPOSED BUILDING (cut)', 425, 375, 10, helvB);
+texto('FFE 101.50', 468, 390, 9, helv);
 texto(`${(240 * M_POR_U).toFixed(2)} x ${(160 * M_POR_U).toFixed(2)} m`, 455, 404, 8, helv, gris);
 
 // --- Estacionamiento (zona de relleno) ---
 rect(650, 480, 170, 150, { borderWidth: 1.4, color: rgb(0.85, 0.9, 0.97), borderColor: azul });
-texto('ESTACIONAMIENTO', 685, 548, 8.5, helvB, azul);
-texto('NPT 102.30 (relleno)', 682, 562, 7.5, helv, azul);
+texto('PARKING LOT', 700, 548, 8.5, helvB, azul);
+texto('FFE 102.30 (fill)', 690, 562, 7.5, helv, azul);
 
 // --- Cotas puntuales ---
 const puntos = [
@@ -134,7 +134,7 @@ for (let i = 0; i < 4; i++) {
   texto(String(i * 5), bx + i * tramo - (i === 0 ? 2 : 4), by + 20, 8);
 }
 texto('20 m', bx + 4 * tramo - 6, by + 20, 8, helvB);
-texto('ESCALA GRÁFICA 1:500', bx, by - 8, 8, helvB);
+texto('GRAPHIC SCALE 1:500', bx, by - 8, 8, helvB);
 page.drawLine({
   start: { x: bx, y: H - by + 6 },
   end: { x: bx, y: H - by - 14 },
@@ -148,13 +148,13 @@ const cx = W - 340;
 const cy = H - 140;
 rect(cx, cy, 310, 110, { borderWidth: 1.2 });
 page.drawLine({ start: { x: cx, y: H - cy - 30 }, end: { x: cx + 310, y: H - cy - 30 }, thickness: 0.8 });
-texto('Plano de prueba - Escala 1:500', cx + 10, cy + 20, 12, helvB);
-texto('Proyecto: Movimiento de tierras (ejemplo)', cx + 10, cy + 48, 9);
-texto('Unidades: metros · Cotas en m s.n.m.', cx + 10, cy + 63, 9);
-texto('Equidistancia de curvas: 1.00 m', cx + 10, cy + 78, 9);
-texto('Formato A3 · Hoja 1 de 1', cx + 10, cy + 93, 9, helv, gris);
+texto('Test plan - Scale 1:500', cx + 10, cy + 20, 12, helvB);
+texto('Project: Earthwork (sample)', cx + 10, cy + 48, 9);
+texto('Units: meters · Elevations in m above sea level', cx + 10, cy + 63, 9);
+texto('Contour interval: 1.00 m', cx + 10, cy + 78, 9);
+texto('A3 format · Sheet 1 of 1', cx + 10, cy + 93, 9, helv, gris);
 
 const bytes = await doc.save({ useObjectStreams: false });
 mkdirSync(dirname(salida), { recursive: true });
 writeFileSync(salida, bytes);
-console.log(`PDF generado: ${salida} (${bytes.length} bytes)`);
+console.log(`PDF generated: ${salida} (${bytes.length} bytes)`);

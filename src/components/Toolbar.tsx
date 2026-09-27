@@ -175,11 +175,17 @@ export default function Toolbar() {
         onChange={setIdioma}
       />
 
-      {modulo === 'excavacion' && (
-        <span className="ml-auto truncate text-sm text-slate-400" title={pdfSource?.nombre}>
-          {pdfSource ? pdfSource.nombre : t('toolbar.noPlan')}
+      <div className="ml-auto flex min-w-0 items-center gap-3">
+        {modulo === 'excavacion' && (
+          <span className="truncate text-sm text-slate-400" title={pdfSource?.nombre}>
+            {pdfSource ? pdfSource.nombre : t('toolbar.noPlan')}
+          </span>
+        )}
+        {/* Etiqueta de versión (versión de package.json · commit corto · fecha de compilación). */}
+        <span className="shrink-0 font-mono text-[10px] text-slate-500" title={t('app.versionTitle')}>
+          v{__APP_VERSION__} · {__APP_COMMIT__} · {__APP_BUILD_DATE__}
         </span>
-      )}
+      </div>
     </header>
   );
 }

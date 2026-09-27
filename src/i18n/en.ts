@@ -3,6 +3,7 @@
 export const en = {
   // --- App ---
   'app.title': 'Excavation takeoff · Cut and fill',
+  'app.versionTitle': 'App version · commit · build date',
 
   // --- Barra superior ---
   'toolbar.heading': 'Takeoff · Cut & Fill',
@@ -54,16 +55,17 @@ export const en = {
   'distance.ftAria': '{label}: feet',
   'distance.inAria': '{label}: inches',
   'distance.hintMeters': 'Meters, e.g. 1.5',
-  'distance.hintImperial': 'Inches 0 to 11.99 (decimals allowed)',
-  'distance.hintImperialEq': 'Inches 0 to 11.99 (decimals allowed) · = {meters} m',
+  'distance.inPlaceholder': 'e.g. 7 1/2',
+  'distance.hintImperial': 'Whole feet; inches like 7, 3/4 or 7 1/2 (under 12)',
+  'distance.hintImperialEq': 'Inches like 7, 3/4 or 7 1/2 · = {value}',
   'distance.err.negative': 'Distance cannot be negative.',
   'distance.err.zero': 'Distance must be greater than zero.',
   'distance.err.metersInvalid': 'Enter a valid number in meters (e.g. 1.5).',
   'distance.err.empty': 'Enter feet and/or inches.',
-  'distance.err.feetInvalid': 'Feet: enter a valid number (e.g. 3).',
-  'distance.err.inchesInvalid': 'Inches: enter a valid number (e.g. 6.5).',
-  'distance.err.negativeParts': 'Feet and inches cannot be negative.',
-  'distance.err.badInput': 'Enter numbers only for feet and inches (e.g. 3 and 6.5).',
+  'distance.err.feetInteger': 'Feet: enter a whole number (e.g. 65).',
+  'distance.err.inchesInvalid': 'Inches: enter e.g. 7, 3/4, 7 1/2 or 7-1/2.',
+  'distance.err.denominator': 'Inches: use halves, quarters, eighths or sixteenths (/2, /4, /8, /16).',
+  'distance.err.mixedFraction': 'Inches: in a mixed number the fraction must be less than 1 (e.g. 7 1/2).',
 
   // --- Lista de zonas ---
   'zones.heading': 'Zones ({count})',
@@ -71,6 +73,7 @@ export const en = {
   'zones.delete': 'Delete zone',
   'zone.sample.buildingPad': 'Building pad',
   'zone.sample.parking': 'Parking lot',
+  'zone.defaultName': 'Zone {n}',
   'zoneType.corte': 'Cut',
   'zoneType.relleno': 'Fill',
   'zone.area': 'Area',
@@ -209,9 +212,10 @@ export const en = {
   // --- Asfalto ---
   'asphalt.heading': 'Asphalt elements ({count})',
   'asphalt.notesPlaceholder': 'Mix type, compaction, specs…',
-  'asphalt.density': 'Compacted density',
+  'asphalt.densityMetric': 'Compacted density (t/m³)',
+  'asphalt.densityImperial': 'Compacted density (lb/ft³)',
   'asphalt.densityHint.metric': 't/m³ · default 2.35 (hot-mix asphalt)',
-  'asphalt.densityHint.imperial': 'lb/ft³ · default ≈ 146.7 (hot-mix asphalt, 2.35 t/m³)',
+  'asphalt.densityHint.imperial': 'lb/ft³ · default ≈ 146.7 (hot-mix asphalt)',
   'asphalt.note': 'Tonnage = order volume × compacted density.',
   'asphaltType.calle': 'Road',
   'asphaltType.estacionamiento': 'Parking lot',

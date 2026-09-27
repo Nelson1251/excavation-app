@@ -28,6 +28,7 @@ interface ProjectActions {
   setPageIndex: (index: number) => void;
   setNumPaginas: (n: number) => void;
   setScale: (metersPerPdfUnit: number | null) => void;
+  /** Agrega una zona. Con `nombre: ''` se muestra un nombre por defecto en el idioma actual ("Zone n" / "Zona n"). */
   addZone: (zone: Omit<Zone, 'id'>) => void;
   /** Actualiza propiedades de una zona (p. ej. profundidad o soilType; soilType: undefined = sin especificar). */
   updateZone: (id: string, cambios: Partial<Omit<Zone, 'id'>>) => void;
@@ -60,7 +61,7 @@ export type ProjectStore = ProjectState & ProjectActions;
 const zonasEjemplo: Zone[] = [
   {
     id: 'z-ejemplo-1',
-    nombre: 'Building pad',
+    nombre: '', // el nombre visible sale de nombreClave (traducido al mostrar)
     nombreClave: 'zone.sample.buildingPad',
     tipo: 'corte',
     puntos: [
@@ -73,7 +74,7 @@ const zonasEjemplo: Zone[] = [
   },
   {
     id: 'z-ejemplo-2',
-    nombre: 'Parking lot',
+    nombre: '',
     nombreClave: 'zone.sample.parking',
     tipo: 'relleno',
     puntos: [
@@ -88,7 +89,9 @@ const zonasEjemplo: Zone[] = [
 
 // El store no usa el middleware `persist`; solo el sistema de unidades y el idioma se guardan en localStorage.
 const CLAVE_UNIDADES = 'excavation-app:sistemaUnidades';
-const CLAVE_IDIOMA = 'excavation-app:language';
+// v2: se cambió la clave para que todos empiecen en inglés una vez (un valor 'es' antiguo ya no se lee).
+const CLAVE_IDIOMA = 'excavation-app:language-v2';
+const CLAVES_IDIOMA_ANTIGUAS = ['excavation-app:language'];
 
 function leerGuardado(clave: string): string | null {
   try {
@@ -112,6 +115,11 @@ function leerSistemaGuardado(): SistemaUnidades {
 }
 
 function leerIdiomaGuardado(): Idioma {
+  try {
+    for (const clave of CLAVES_IDIOMA_ANTIGUAS) globalThis.localStorage?.removeItem(clave);
+  } catch {
+    // sin localStorage
+  }
   const v = leerGuardado(CLAVE_IDIOMA);
   return esIdioma(v) ? v : IDIOMA_POR_DEFECTO;
 }

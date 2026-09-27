@@ -12,14 +12,19 @@ volumes, material needed, net balance and truck trips.
 ## Usage
 
 - **Language**: `EN | ES` toggle in the top bar (default English). Saved in `localStorage`
-  (`excavation-app:language`). Updates the page `<title>` and `<html lang>`.
+  (`excavation-app:language-v2`; the old `excavation-app:language` key is ignored and removed so everyone starts
+  in English once). Updates the page `<title>` and `<html lang>`.
+- **Version tag**: small `v0.3.0 · <commit> · <date>` text at the right of the top bar shows which build is running.
 - **Units**: `Meters | Feet` toggle in the top bar (default Meters). Saved in `localStorage`
   (`excavation-app:sistemaUnidades`). Everything is stored internally in meters / m² / m³.
   - Meters: lengths in m, areas in m², volumes in m³.
-  - Feet: lengths shown as feet-inches rounded to the nearest 1/4" (e.g. `3' 6"`, `0' 8"`, `-3' 6 1/4"`),
-    areas in ft², volumes in yd³ (cubic yards), asphalt tonnage in US short tons.
-  - Distance inputs: one numeric field in Meters mode; two numeric fields (**ft** and **in**) in Feet mode.
-    Inches accept decimals (0–11.99); 12 or more are carried into feet when the field loses focus.
+  - Feet: no metric units are shown. Lengths as feet-inches rounded to the nearest 1/8" with reduced fractions
+    (e.g. `65' 7 3/8"`, `3' 6 1/2"`, `0' 8"`), areas in ft², volumes in yd³ (cubic yards), asphalt density in
+    lb/ft³ and tonnage in US short tons.
+  - Distance inputs: one numeric field in Meters mode; in Feet mode a **ft** field (whole numbers) and an **in**
+    text field that takes fractions like tradespeople write them: `7`, `3/4`, `5/8`, `1/16`, `7 1/2`, `7-1/2`,
+    `11 15/16` (denominators 2, 4, 8, 16; a plain decimal such as `7.5` is also accepted). 12 or more inches are
+    carried into feet when the field loses focus. Stored values load back as fractions to 1/16 (e.g. `7 3/8`).
 - **Modules** (tabs in the top bar):
   - **Earthwork**: PDF plan + zone list. Cut zones have a *Soil type* (drives the zone's *Swell %*, editable);
     fill zones have a *Fill material* (drives *Compaction shrink %*, editable). Per zone: Bank volume, Loose volume,
@@ -79,6 +84,10 @@ src/
   material (midpoint of a documented typical range, see `src/lib/soils.ts`), else the project default
   (25 % swell, 10 % shrink).
 
+On Windows, double-click `iniciar.bat`: it installs dependencies if needed and runs `npm run dev -- --open`, so the
+browser opens on the port Vite actually got (5173, or 5174 if an older server is still running — close old windows
+first).
+
 ## Requirements
 
 - Node.js **20.19+** (or 22.12+) and npm.
@@ -92,7 +101,7 @@ npm run build        # type check + production build into dist/
 npm run lint         # oxlint
 npm test             # quick checks of the pure modules (units, soils, volumes, concrete, asphalt, i18n)
 npm run preview      # serve the production build
-npm run sample-pdf   # regenerate public/sample-plan.pdf
+npm run sample-pdf   # regenerate public/sample-plan.pdf (English labels, metric 1:500 plan)
 ```
 
 ## Next steps

@@ -68,8 +68,11 @@ igual(u.formatearPiesPulgadas(-0.001), `0' 0"`, 'negativo que redondea a cero');
 igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(3, 6.25)), `3' 6 1/4"`, '1/4 de pulgada');
 igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(3, 6.5)), `3' 6 1/2"`, '1/2 pulgada');
 igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(3, 6.8)), `3' 6 3/4"`, 'redondeo a 3/4');
-igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(0, 11.9)), `1' 0"`, 'acarreo 11.9" → 1\' 0"');
-igual(u.formatearPiesPulgadas(20), `65' 7 1/2"`, '20 m');
+igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(0, 11.9)), `0' 11 7/8"`, '11.9" → 11 7/8" (1/8")');
+igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(0, 11.95)), `1' 0"`, 'acarreo 11.95" → 1\' 0"');
+igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(3, 6.375)), `3' 6 3/8"`, '3/8 reducido');
+igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(0, 0.25)), `0' 0 1/4"`, 'fracción sola con 0 pulgadas');
+igual(u.formatearPiesPulgadas(20), `65' 7 3/8"`, '20 m → 65\' 7 3/8"');
 igual(u.formatearPiesPulgadas(0.3048), `1' 0"`, '1 pie exacto');
 
 // Áreas y volúmenes
@@ -168,6 +171,86 @@ cerca(u.toneladasACortas(0.90718474), 1, '1 ton corta = 0.90718474 t');
 cerca(u.tM3ALbFt3(2.35), 146.705706, '2.35 t/m³ ≈ 146.7 lb/ft³', 1e-6);
 cerca(u.lbFt3ATM3(u.tM3ALbFt3(2.35)), 2.35, 'ida y vuelta densidad');
 cerca(a.totalesAsfalto([calle, calle], 2.35).toneladas, 246.75, 'totales de asfalto');
+
+// Captura pies + pulgadas (DistanceInput) → metros, y eco consistente con el campo
+// Pulgadas con fracción (como en obra)
+const pf = (x) => u.leerPulgadasFraccion(x);
+igual(pf('1/2'), { valor: 0.5 }, "'1/2' = 0.5");
+igual(pf('3/4'), { valor: 0.75 }, "'3/4' = 0.75");
+igual(pf('5/8'), { valor: 0.625 }, "'5/8'");
+igual(pf('1/16'), { valor: 0.0625 }, "'1/16'");
+igual(pf('7 1/2'), { valor: 7.5 }, "'7 1/2' = 7.5");
+igual(pf('7-3/8'), { valor: 7.375 }, "'7-3/8' = 7.375");
+igual(pf('7 - 3/8'), { valor: 7.375 }, "'7 - 3/8' con espacios");
+igual(pf('11 15/16'), { valor: 11.9375 }, "'11 15/16' = 11.9375");
+igual(pf('7'), { valor: 7 }, "'7' = 7");
+igual(pf('7.5'), { valor: 7.5 }, "'7.5' (decimal tolerado)");
+igual(pf('7,5'), { valor: 7.5 }, "'7,5' (coma decimal)");
+igual(pf('5/4'), { valor: 1.25 }, "'5/4' impropia sola = 1.25");
+igual(pf('1/3'), { error: 'distance.err.denominator' }, "'1/3' inválido (denominador)");
+igual(pf('7 1/5'), { error: 'distance.err.denominator' }, "'7 1/5' inválido (denominador)");
+igual(pf('7 5/4'), { error: 'distance.err.mixedFraction' }, "'7 5/4' inválido (mixto ≥ 1)");
+igual(pf('1/0'), { error: 'distance.err.denominator' }, "'1/0' inválido");
+igual(pf('-2'), { error: 'distance.err.inchesInvalid' }, "'-2' inválido");
+igual(pf('abc'), { error: 'distance.err.inchesInvalid' }, "'abc' inválido");
+igual(u.pulgadasATextoFraccion(7.375), '7 3/8', 'texto fracción 7 3/8');
+igual(u.pulgadasATextoFraccion(0.5), '1/2', 'texto fracción 1/2');
+igual(u.pulgadasATextoFraccion(11.9375), '11 15/16', 'texto fracción 11 15/16');
+igual(u.metrosACamposPiesPulgadas(20), { pies: '65', pulgadas: '7 3/8' }, 'campos para 20 m: 65 / 7 3/8');
+igual(u.metrosACamposPiesPulgadas(1.0668), { pies: '3', pulgadas: '6' }, 'campos para 1.0668 m: 3 / 6');
+igual(u.metrosACamposPiesPulgadas(1.5), { pies: '4', pulgadas: '11 1/16' }, 'campos para 1.5 m: 4 / 11 1/16');
+igual(u.textoCampoPulgadas(6.5), '6 1/2', 'normalizado exacto → fracción');
+igual(u.textoCampoPulgadas(0.3), '0.3', 'normalizado no exacto → decimal');
+
+// Captura ft (entero) + in (fracción) → metros; eco y campos coinciden
+const r65 = u.evaluarPiesPulgadas('65', '7 3/8', false);
+cerca(r65.metros, 65 * 0.3048 + 7.375 * 0.0254, "65 ft 7 3/8 in → metros (usa pies Y pulgadas)");
+cerca(r65.metros, 20, '65 ft 7 3/8 in ≈ 20 m (±1 mm)', 1e-3);
+igual(u.formatearPiesPulgadas(r65.metros), `65' 7 3/8"`, 'eco = lo capturado (65\' 7 3/8")');
+const campos20 = u.metrosACamposPiesPulgadas(20);
+igual(u.formatearPiesPulgadas(u.evaluarPiesPulgadas(campos20.pies, campos20.pulgadas).metros), u.formatearPiesPulgadas(20), 'ida y vuelta 20 m: campos → metros → texto');
+const r74 = u.evaluarPiesPulgadas('65', '7.4', false);
+cerca(r74.metros, 19.99996, '65 ft 7.4 in (decimal) = 19.99996 m', 1e-9);
+igual(u.formatearPiesPulgadas(r74.metros), `65' 7 3/8"`, '65\' 7.4" se muestra 65\' 7 3/8" (1/8")');
+cerca(u.evaluarPiesPulgadas('3', '6').metros, 1.0668, 'ft + in: 3 y 6');
+cerca(u.evaluarPiesPulgadas('', '42').metros, 1.0668, 'solo pulgadas: 42');
+cerca(u.evaluarPiesPulgadas('3', '1/2').metros, 3 * 0.3048 + 0.5 * 0.0254, 'pies + fracción');
+cerca(u.evaluarPiesPulgadas('0', '6.5').metros, 0.1651, 'pulgadas decimales');
+igual(u.formatearPiesPulgadas(u.evaluarPiesPulgadas('3', '18').metros), `4' 6"`, 'eco normaliza 3 ft 18 in → 4\' 6"');
+igual(u.evaluarPiesPulgadas('3.5', ''), { error: 'distance.err.feetInteger' }, 'pies decimales → error entero');
+igual(u.evaluarPiesPulgadas('', ''), { error: 'distance.err.empty' }, 'ambos vacíos');
+igual(u.evaluarPiesPulgadas('x', '1'), { error: 'distance.err.feetInteger' }, 'pies inválidos');
+igual(u.evaluarPiesPulgadas('1', '-2'), { error: 'distance.err.inchesInvalid' }, 'pulgadas negativas');
+igual(u.evaluarPiesPulgadas('1', '1/3'), { error: 'distance.err.denominator' }, 'denominador inválido');
+igual(u.evaluarPiesPulgadas('0', '0', false), { error: 'distance.err.zero' }, 'cero no permitido');
+for (const m of [0.2032, 1.0668, 1.5, 20, 123.456]) {
+  assert.doesNotMatch(u.formatearLongitud(m, 'imperial'), /m/, `formatearLongitud imperial sin "m" (${m})`);
+  assert.doesNotMatch(u.formatearArea(m, 'imperial'), /m²/, 'área imperial en ft²');
+  assert.doesNotMatch(u.formatearVolumen(m, 'imperial'), /m³/, 'volumen imperial en yd³');
+  ok += 3;
+}
+
+// Modo Pies sin metros: ningún texto que pueda verse en modo imperial contiene unidades métricas.
+// Solo se permiten en las claves que se muestran exclusivamente en modo Metros (o que describen esa opción).
+const SOLO_METRICO = new Set([
+  'units.metric', // botón "Meters"/"Metros" del selector (siempre visible por diseño)
+  'units.metric.title', // ayuda emergente de ese botón
+  'scale.metric',
+  'distance.labelMeters',
+  'distance.hintMeters',
+  'distance.err.metersInvalid',
+  'asphalt.densityHint.metric',
+  'asphalt.densityMetric',
+  'unit.tonnes',
+]);
+const METRICO = /(^|[^\p{L}])(m|m²|m³|t\/m³|t|meters?|metros?|metric|métric\w*|tonnes?)(?=$|[^\p{L}\d])|\{meters\}/iu;
+for (const [nombre, dic] of [['en', enMod.en], ['es', esMod.es]]) {
+  for (const [clave, texto] of Object.entries(dic)) {
+    if (SOLO_METRICO.has(clave)) continue;
+    assert.doesNotMatch(texto, METRICO, `[${nombre}] ${clave} muestra unidades métricas en modo Pies: "${texto}"`);
+    ok++;
+  }
+}
 
 // i18n
 igual(i18n.traducir('en', 'zones.heading', { count: 3 }), 'Zones (3)', 'interpolación en');

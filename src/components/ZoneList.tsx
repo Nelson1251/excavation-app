@@ -31,6 +31,10 @@ const ABUNDAMIENTO_MAX_PCT = 200;
 const CONTRACCION_MAX_PCT = 90;
 const pct = (fraccion: number) => `${fmt(fraccion * 100, fraccion * 100 === Math.round(fraccion * 100) ? 0 : 1)}%`;
 
+/** Nombre visible de una zona: clave i18n (ejemplos) → nombre del usuario → "Zone n"/"Zona n" traducido. */
+const nombreZona = (z: Zone, indice: number, t: Traductor) =>
+  z.nombreClave ? t(z.nombreClave) : z.nombre.trim() || t('zone.defaultName', { n: indice + 1 });
+
 /** Texto traducido del origen de un factor. */
 const textoOrigen = (origen: OrigenAbundamiento, esRelleno: boolean, t: Traductor) =>
   t(origen === 'manual' ? 'source.manual' : origen === 'proyecto' ? 'source.project' : esRelleno ? 'source.material' : 'source.soil');
@@ -179,14 +183,14 @@ export default function ZoneList() {
           <p className="text-xs text-slate-500">{t('zones.empty')}</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {filas.map(({ zona: z, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes }) => {
+            {filas.map(({ zona: z, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes }, indice) => {
               const esRelleno = z.tipo === 'relleno';
               const etiquetaProfundidad = t(esRelleno ? 'zone.thickness' : 'zone.depth');
               const claveTipo: Clave = `zoneType.${z.tipo}`;
               return (
                 <li key={z.id} className="rounded-md border border-slate-800 bg-slate-950/60 p-2 text-xs">
                   <div className="mb-1 flex items-center justify-between">
-                    <span className="font-medium text-slate-100">{z.nombreClave ? t(z.nombreClave) : z.nombre}</span>
+                    <span className="font-medium text-slate-100">{nombreZona(z, indice, t)}</span>
                     <div className="flex items-center gap-2">
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
