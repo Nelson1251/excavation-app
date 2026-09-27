@@ -2,8 +2,8 @@
 
 Web app for **earthwork quantity takeoff (cut and fill)** from PDF plans, plus simple **concrete** and **asphalt**
 quantity modules. The user loads a plan, calibrates the scale, draws zones (polygons) on an interactive canvas,
-assigns each zone its kind (cut or fill), depth, soil type / fill material, and gets areas, bank / loose / compacted
-volumes, material needed, net balance and truck trips.
+gives each zone a **cut depth** and/or a **fill depth** (one zone can have both), soil type / fill material, and gets
+areas, bank / loose / compacted volumes, material needed, net balance and truck trips.
 
 > Current status: **project skeleton (phase 0) + units, i18n, soils/fill materials, concrete and asphalt modules**.
 > PDF loading/zoom/pan, scale calibration (two points) and zone drawing (polygon or drag-rectangle) work. Excel/PDF
@@ -25,7 +25,7 @@ volumes, material needed, net balance and truck trips.
 - **Draw a zone**: press **✏️ Draw zone**, then either **drag** to draw a rectangle, or **click** to add polygon
   vertices and close it by clicking the first point, double-clicking or pressing **Enter**. **Backspace** removes the
   last point, **Esc** cancels (Esc again returns to Pan). The new zone is selected in the list to set its name,
-  cut/fill, depth and soil. Area = shoelace (PDF units²) × scale²; without a calibrated scale the zone is still drawn
+  cut depth, fill depth and soil. Area = shoelace (PDF units²) × scale²; without a calibrated scale the zone is still drawn
   and its area appears as soon as you calibrate. Mouse, touch and pen all work; wheel = zoom, middle button = pan.
 
 - **Language**: `EN | ES` toggle in the top bar (default English). Saved in `localStorage`
@@ -43,9 +43,13 @@ volumes, material needed, net balance and truck trips.
     `11 15/16` (denominators 2, 4, 8, 16; a plain decimal such as `7.5` is also accepted). 12 or more inches are
     carried into feet when the field loses focus. Stored values load back as fractions to 1/16 (e.g. `7 3/8`).
 - **Modules** (tabs in the top bar):
-  - **Earthwork**: PDF plan + zone list. Cut zones have a *Soil type* (drives the zone's *Swell %*, editable);
-    fill zones have a *Fill material* (drives *Compaction shrink %*, editable). Per zone: Bank volume, Loose volume,
-    Compacted volume and Material needed. Truck trips use loose volumes.
+  - **Earthwork**: PDF plan + zone list. Each zone has two depths, **Cut depth** and **Fill depth** (either may be
+    0; both work in Meters and in Feet with ft-in fractions), so a zone that is partly cut and partly filled does not
+    have to be drawn twice. The cut part has a *Soil type* (drives the cut *Swell %*, editable); the fill part has a
+    *Fill material* (drives *Compaction shrink %*, editable) and a haul swell. Per zone: Cut volume (bank), Fill
+    volume (compacted), signed Net (cut +, fill −), cut loose, material needed and fill loose. Totals add cut and
+    fill separately over all zones and sheets; truck trips use loose volumes. On the plan, cut-only zones are red,
+    fill-only blue, cut + fill purple.
   - **Concrete**: sidewalks, columns (rectangular or round), slabs/floors, footings, beams, walls. Quantity,
     dimensions, waste % (default 5 %) and notes. Shows net volume and **Order volume (incl. waste)**.
   - **Asphalt**: road, parking lot, sidewalk topping, driveway, patch/other. Area, net volume, order volume and
@@ -94,10 +98,10 @@ src/
 │   ├── units.ts              # unit conversion and formatting (ft-in, ft², yd³, short tons…)
 │   ├── soils.ts              # soil types (swell) and fill materials (shrink) with documented ranges
 │   ├── geometry.ts           # shoelace area, scale, drag → rectangle, screen ↔ plan, centroid
-│   ├── zones.ts              # zone display name helpers
+│   ├── zones.ts              # zone name, old-model migration (migrarZona), cut/fill kind, per-zone factors
 │   ├── pages.ts              # page clamping, per-page scale and zones
 │   ├── canvasHint.ts         # which instruction banner / PDF error hint to show
-│   ├── volumes.ts            # zone volumes (bank / compacted / material needed / loose) and totals
+│   ├── volumes.ts            # per-zone cut and fill volumes (bank / compacted / needed / loose) and totals
 │   ├── factors.ts            # swell, shrink, truck trips
 │   ├── concrete.ts           # concrete volumes
 │   └── asphalt.ts            # asphalt area, volume and tonnage
@@ -110,7 +114,9 @@ src/
 - **PDF units**: the canvas works in PDF units (1 u = 1/72 inch on paper), independent of zoom.
 - **Scale** (`metersPerPdfUnit`): real meters per PDF unit. A 1:500 plan printed at full size equals
   `500 × 0.0254 / 72 ≈ 0.1764 m/u`.
-- **Zone volume** = area (m²) × average depth (m).
+- **Zone volumes**: cut bank = area (m²) × cut depth (m); fill compacted = area × fill depth; net = cut − fill.
+  Zones saved with the old single `profundidad` + `tipo` model are migrated by `migrarZona()` (`src/lib/zones.ts`):
+  cut d → cutDepth d / fillDepth 0; fill d → cutDepth 0 / fillDepth d.
 - **Factors**: loose = bank × (1 + swell); material needed = compacted / (1 − shrink);
   trips = ⌈loose / truck capacity⌉. Swell/shrink come from the zone's manual value, else its soil type / fill
   material (midpoint of a documented typical range, see `src/lib/soils.ts`), else the project default

@@ -1,20 +1,19 @@
-// Lista de zonas con área, profundidad, tipo de suelo (corte) o material de relleno (relleno),
-// abundamiento, contracción y volúmenes (en banco / compactado, material necesario y suelto),
-// más totales preliminares. Todo se calcula en m / m² / m³ y solo se convierte al mostrar.
+// Lista de zonas con área, profundidad de corte y de relleno (una misma zona puede tener ambas),
+// tipo de suelo (corte), material de relleno (relleno), abundamiento, contracción y volúmenes
+// (corte en banco / suelto, relleno compactado / material necesario / suelto, neto), más totales
+// preliminares que suman el corte y el relleno por separado. Todo se calcula en m / m² / m³ y solo se convierte al mostrar.
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useT } from '../i18n/useT';
 import type { Clave, Traductor } from '../i18n';
 import { polygonAreaM2 } from '../lib/geometry';
 import { escalaDePagina, paginasConZonas } from '../lib/pages';
-import { totals, zoneVolume, zoneVolumes } from '../lib/volumes';
+import { totals, zoneVolumes } from '../lib/volumes';
 import { truckTrips } from '../lib/factors';
 import { formatearArea, formatearLongitud, formatearNumero as fmt, formatearVolumen, leerNumero } from '../lib/units';
 import {
   MATERIALES_RELLENO,
   TIPOS_SUELO,
-  abundamientoDeZona,
-  contraccionDeZona,
   descripcionMaterialRelleno,
   esFillMaterial,
   esSoilType,
@@ -24,8 +23,7 @@ import {
   pistaContraccion,
   type OrigenAbundamiento,
 } from '../lib/soils';
-import { esTipoZona, nombreZona } from '../lib/zones';
-import type { Zone } from '../types';
+import { factoresDeZona, movimientoZona, nombreZona, type MovimientoZona } from '../lib/zones';
 import DistanceInput from './DistanceInput';
 
 const ABUNDAMIENTO_MAX_PCT = 200;
@@ -135,6 +133,14 @@ function CampoPorcentaje({
   );
 }
 
+/** Colores de la insignia según las profundidades (igual que en el lienzo). */
+const CLASE_INSIGNIA: Record<MovimientoZona, string> = {
+  corte: 'bg-red-500/20 text-red-300',
+  relleno: 'bg-sky-500/20 text-sky-300',
+  mixta: 'bg-purple-500/20 text-purple-300',
+  ninguno: 'bg-slate-500/20 text-slate-300',
+};
+
 const claseSelect =
   'w-full rounded-md border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-xs text-slate-100 outline-none focus:border-amber-500';
 const claseEtiquetaCampo = 'mb-1 block text-[10px] uppercase text-slate-400';
@@ -167,31 +173,21 @@ export default function ZoneList() {
     // Cada zona usa la escala de su propia página (hoja).
     const escala = escalaDePagina(escalas, z.pageIndex);
     const area = escala ? polygonAreaM2(z.puntos, escala) : null;
-    // Abundamiento: manual → tipo de suelo (solo corte) → proyecto.
-    const soilType = z.tipo === 'corte' ? z.soilType : undefined;
-    const abund = abundamientoDeZona({ soilType, abundamientoManual: z.abundamientoManual }, factors.abundamiento);
-    const abundPorDefecto = abundamientoDeZona({ soilType }, factors.abundamiento);
-    // Contracción (solo relleno): manual → material de relleno → proyecto.
-    const contr = contraccionDeZona(z, factors.contraccion);
-    const contrPorDefecto = contraccionDeZona({ fillMaterial: z.fillMaterial }, factors.contraccion);
-    const volumenes =
-      area !== null ? zoneVolumes(z.tipo, zoneVolume(area, z.profundidad), abund.valor, contr.valor) : null;
-    return { zona: z, indice, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes };
+    // Corte: abundamiento manual → tipo de suelo → proyecto. Relleno: contracción manual → material →
+    // proyecto; abundamiento del acarreo del material: manual → proyecto.
+    const f = factoresDeZona(z, factors);
+    const volumenes = area !== null ? zoneVolumes(area, z.cutDepth, z.fillDepth, f.paraVolumen) : null;
+    return { zona: z, indice, area, f, volumenes };
   });
   // Con varias hojas la lista se agrupa por hoja ("Sheet 2"); los totales suman todas las hojas.
   const variasHojas = numPaginas > 1 || paginasConZonas(zones).some((p) => p > 0);
   const filasOrdenadas = variasHojas ? [...filas].sort((a, b) => a.zona.pageIndex - b.zona.pageIndex) : filas;
   const hayZonasSinEscala = filas.some((f) => f.area === null);
 
-  // Totales geométricos (corte en banco / relleno compactado) y de acarreo (volúmenes sueltos por zona).
-  const tot = totals(filas.map((f) => ({ tipo: f.zona.tipo, volumen: f.volumenes?.geometrico ?? 0 })));
-  const suma = (tipo: Zone['tipo'], campo: 'banco' | 'suelto') =>
-    filas.reduce((acc, f) => acc + (f.zona.tipo === tipo ? (f.volumenes?.[campo] ?? 0) : 0), 0);
-  const corteSuelto = suma('corte', 'suelto');
-  const rellenoBanco = suma('relleno', 'banco');
-  const rellenoSuelto = suma('relleno', 'suelto');
-  const viajesCorte = truckTrips(corteSuelto, factors.capacidadCamion);
-  const viajesRelleno = truckTrips(rellenoSuelto, factors.capacidadCamion);
+  // Totales: la parte de corte y la de relleno de cada zona se suman por separado (todas las hojas).
+  const tot = totals(filas.flatMap((f) => (f.volumenes ? [f.volumenes] : [])));
+  const viajesCorte = truckTrips(tot.corteSuelto, factors.capacidadCamion);
+  const viajesRelleno = truckTrips(tot.rellenoSuelto, factors.capacidadCamion);
   const capacidad = formatearVolumen(factors.capacidadCamion, sistema, sistema === 'imperial' ? 1 : 0);
 
   return (
@@ -207,11 +203,13 @@ export default function ZoneList() {
           <p className="text-xs text-slate-500">{t('zones.empty')}</p>
         ) : (
           <ul ref={listaRef} className="flex flex-col gap-2">
-            {filasOrdenadas.map(({ zona: z, indice, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes }, pos) => {
+            {filasOrdenadas.map(({ zona: z, indice, area, f, volumenes }, pos) => {
               const nuevaHoja = variasHojas && (pos === 0 || filasOrdenadas[pos - 1].zona.pageIndex !== z.pageIndex);
-              const esRelleno = z.tipo === 'relleno';
-              const etiquetaProfundidad = t(esRelleno ? 'zone.thickness' : 'zone.depth');
-              const claveTipo: Clave = `zoneType.${z.tipo}`;
+              const movimiento = movimientoZona(z);
+              const claveTipo: Clave = `zoneType.${movimiento}`;
+              const hayCorte = z.cutDepth > 0;
+              const hayRelleno = z.fillDepth > 0;
+              const neto = volumenes?.neto ?? 0;
               return (
                 <Fragment key={z.id}>
                 {nuevaHoja && (
@@ -248,9 +246,8 @@ export default function ZoneList() {
                     <span className="font-medium text-slate-100">{nombreZona(z, indice, t)}</span>
                     <div className="flex items-center gap-2">
                       <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                          esRelleno ? 'bg-sky-500/20 text-sky-300' : 'bg-red-500/20 text-red-300'
-                        }`}
+                        data-zone-kind={movimiento}
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${CLASE_INSIGNIA[movimiento]}`}
                       >
                         {t(claveTipo)}
                       </span>
@@ -274,99 +271,166 @@ export default function ZoneList() {
                       <dd>{area !== null ? formatearArea(area, sistema) : '—'}</dd>
                     </div>
                     <div>
-                      <dt>{etiquetaProfundidad}</dt>
-                      <dd>{formatearLongitud(z.profundidad, sistema)}</dd>
+                      <dt className="!text-red-300/80">{t('zone.cutDepth')}</dt>
+                      <dd data-depth="cut">{formatearLongitud(z.cutDepth, sistema)}</dd>
                     </div>
-                    {esRelleno ? (
-                      <div>
-                        <dt>{t('zone.material')}</dt>
-                        <dd className="truncate" title={etiquetaMaterialRelleno(z.fillMaterial, t)}>
-                          {etiquetaMaterialRelleno(z.fillMaterial, t)}
-                        </dd>
-                      </div>
-                    ) : (
-                      <div>
-                        <dt>{t('zone.soil')}</dt>
-                        <dd className="truncate" title={etiquetaSuelo(z.soilType, t)}>
-                          {etiquetaSuelo(z.soilType, t)}
-                        </dd>
-                      </div>
-                    )}
-                    {esRelleno && (
-                      <div>
-                        <dt>{t('zone.shrinkUsed')}</dt>
-                        <dd title={t('zone.source', { source: textoOrigen(contr.origen, true, t) })}>
-                          {pct(contr.valor)}
-                        </dd>
-                      </div>
-                    )}
                     <div>
-                      <dt>{t('zone.swellUsed')}</dt>
-                      <dd title={t('zone.source', { source: textoOrigen(abund.origen, esRelleno, t) })}>
-                        {pct(abund.valor)}
+                      <dt className="!text-sky-300/80">{t('zone.fillDepth')}</dt>
+                      <dd data-depth="fill">{formatearLongitud(z.fillDepth, sistema)}</dd>
+                    </div>
+                    <div>
+                      <dt className="!text-red-300/80" title={t('vol.cut.title')}>{t('vol.cut')}</dt>
+                      <dd data-vol="cut">{volumenes ? vol(volumenes.corteBanco) : '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="!text-sky-300/80" title={t('vol.fill.title')}>{t('vol.fill')}</dt>
+                      <dd data-vol="fill">{volumenes ? vol(volumenes.rellenoCompactado) : '—'}</dd>
+                    </div>
+                    <div>
+                      <dt title={t('zone.net.title')}>{t('zone.net')}</dt>
+                      <dd
+                        data-vol="net"
+                        title={t('zone.net.title')}
+                        className={volumenes && neto !== 0 ? (neto > 0 ? '!text-red-300' : '!text-sky-300') : undefined}
+                      >
+                        {volumenes ? `${neto > 0 ? '+' : ''}${vol(neto)}` : '—'}
                       </dd>
                     </div>
-                    {esRelleno && (
-                      <div>
-                        <dt>{t('vol.compacted')}</dt>
-                        <dd>{volumenes ? vol(volumenes.geometrico) : '—'}</dd>
-                      </div>
+                    {hayCorte && (
+                      <>
+                        <div>
+                          <dt>{t('zone.soil')}</dt>
+                          <dd className="truncate" title={etiquetaSuelo(z.soilType, t)}>
+                            {etiquetaSuelo(z.soilType, t)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{t('zone.swellUsed')}</dt>
+                          <dd title={t('zone.source', { source: textoOrigen(f.abundCorte.origen, false, t) })}>
+                            {pct(f.abundCorte.valor)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title={t('vol.loose.title')}>{t('vol.cutLoose')}</dt>
+                          <dd data-vol="cut-loose">{volumenes ? vol(volumenes.corteSuelto) : '—'}</dd>
+                        </div>
+                      </>
                     )}
-                    <div>
-                      <dt title={t(esRelleno ? 'vol.needed.title' : 'vol.bank.title')}>
-                        {t(esRelleno ? 'vol.needed' : 'vol.bank')}
-                      </dt>
-                      <dd>{volumenes ? vol(volumenes.banco) : '—'}</dd>
-                    </div>
-                    <div>
-                      <dt title={t('vol.loose.title')}>{t('vol.loose')}</dt>
-                      <dd>{volumenes ? vol(volumenes.suelto) : '—'}</dd>
-                    </div>
+                    {hayRelleno && (
+                      <>
+                        <div>
+                          <dt>{t('zone.material')}</dt>
+                          <dd className="truncate" title={etiquetaMaterialRelleno(z.fillMaterial, t)}>
+                            {etiquetaMaterialRelleno(z.fillMaterial, t)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{t('zone.shrinkUsed')}</dt>
+                          <dd title={t('zone.source', { source: textoOrigen(f.contr.origen, true, t) })}>
+                            {pct(f.contr.valor)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title={t('vol.needed.title')}>{t('vol.needed')}</dt>
+                          <dd data-vol="fill-needed">{volumenes ? vol(volumenes.rellenoNecesario) : '—'}</dd>
+                        </div>
+                        <div>
+                          <dt>{t('zone.haulSwellUsed')}</dt>
+                          <dd title={t('zone.source', { source: textoOrigen(f.abundRelleno.origen, true, t) })}>
+                            {pct(f.abundRelleno.valor)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt title={t('vol.loose.title')}>{t('vol.fillLoose')}</dt>
+                          <dd data-vol="fill-loose">{volumenes ? vol(volumenes.rellenoSuelto) : '—'}</dd>
+                        </div>
+                      </>
+                    )}
                   </dl>
-                  <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
-                    <div className="min-w-0">
-                      <label htmlFor={`nombre-${z.id}`} className={claseEtiquetaCampo}>
-                        {t('zone.name')}
-                      </label>
-                      <input
-                        id={`nombre-${z.id}`}
-                        type="text"
-                        value={z.nombreClave ? t(z.nombreClave) : z.nombre}
-                        placeholder={t('zone.defaultName', { n: indice + 1 })}
-                        onChange={(e) => updateZone(z.id, { nombre: e.target.value, nombreClave: undefined })}
-                        className={claseSelect}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor={`tipo-${z.id}`} className={claseEtiquetaCampo}>
-                        {t('zone.type')}
-                      </label>
-                      <select
-                        id={`tipo-${z.id}`}
-                        value={z.tipo}
-                        onChange={(e) => {
-                          if (esTipoZona(e.target.value)) updateZone(z.id, { tipo: e.target.value });
-                        }}
-                        className={claseSelect}
-                      >
-                        <option value="corte">{t('zoneType.corte')}</option>
-                        <option value="relleno">{t('zoneType.relleno')}</option>
-                      </select>
-                    </div>
-                  </div>
                   <div className="mt-2">
-                    <DistanceInput
-                      id={`profundidad-${z.id}`}
-                      etiqueta={etiquetaProfundidad}
-                      valorM={z.profundidad}
-                      onChange={(m) => {
-                        if (m !== null) updateZone(z.id, { profundidad: m });
-                      }}
-                      compacto
+                    <label htmlFor={`nombre-${z.id}`} className={claseEtiquetaCampo}>
+                      {t('zone.name')}
+                    </label>
+                    <input
+                      id={`nombre-${z.id}`}
+                      type="text"
+                      value={z.nombreClave ? t(z.nombreClave) : z.nombre}
+                      placeholder={t('zone.defaultName', { n: indice + 1 })}
+                      onChange={(e) => updateZone(z.id, { nombre: e.target.value, nombreClave: undefined })}
+                      className={claseSelect}
                     />
                   </div>
-                  {esRelleno ? (
-                    <div className="mt-2 grid grid-cols-[1fr_auto] items-start gap-2">
+                  {/* Dos profundidades en la misma zona: corte y relleno (0 = no hay esa parte). */}
+                  {/* En Pies cada campo tiene pies + pulgadas: uno debajo del otro para que quepan las fracciones. */}
+                  <div className={`mt-2 grid gap-2 ${sistema === 'imperial' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    <div title={t('zone.cutDepth.title')} className="min-w-0">
+                      <DistanceInput
+                        id={`cut-depth-${z.id}`}
+                        etiqueta={t('zone.cutDepth')}
+                        valorM={z.cutDepth}
+                        onChange={(m) => {
+                          if (m !== null) updateZone(z.id, { cutDepth: m });
+                        }}
+                        compacto
+                      />
+                    </div>
+                    <div title={t('zone.fillDepth.title')} className="min-w-0">
+                      <DistanceInput
+                        id={`fill-depth-${z.id}`}
+                        etiqueta={t('zone.fillDepth')}
+                        valorM={z.fillDepth}
+                        onChange={(m) => {
+                          if (m !== null) updateZone(z.id, { fillDepth: m });
+                        }}
+                        compacto
+                      />
+                    </div>
+                  </div>
+                  {hayCorte && (
+                    <div className="mt-2 grid grid-cols-[1fr_auto] items-start gap-2 border-l-2 border-red-500/40 pl-2">
+                      <div className="min-w-0">
+                        <label htmlFor={`suelo-${z.id}`} className={claseEtiquetaCampo}>
+                          {t('field.soilType')}
+                        </label>
+                        <select
+                          id={`suelo-${z.id}`}
+                          value={z.soilType ?? ''}
+                          onChange={(e) =>
+                            // Al cambiar el suelo se descarta el abundamiento manual y se prellena con el del suelo.
+                            updateZone(z.id, {
+                              soilType: esSoilType(e.target.value) ? e.target.value : undefined,
+                              abundamientoManual: undefined,
+                            })
+                          }
+                          className={claseSelect}
+                        >
+                          <option value="">{t('common.unspecified')}</option>
+                          {TIPOS_SUELO.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {etiquetaSuelo(s.id, t)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {/* key: al cambiar el suelo se reinicia el campo con el nuevo valor típico. */}
+                      <CampoPorcentaje
+                        key={z.soilType ?? 'sin-suelo'}
+                        id={`abund-${z.id}`}
+                        etiqueta={t('field.swell')}
+                        valorManual={z.abundamientoManual}
+                        valorPorDefecto={f.abundCortePorDefecto.valor}
+                        fuente={
+                          f.abundCortePorDefecto.origen === 'suelo'
+                            ? pistaAbundamiento(z.soilType, t)
+                            : t('pct.noSoil', { value: pct(f.abundCortePorDefecto.valor) })
+                        }
+                        maximo={ABUNDAMIENTO_MAX_PCT}
+                        onChange={(fraccion) => updateZone(z.id, { abundamientoManual: fraccion })}
+                      />
+                    </div>
+                  )}
+                  {hayRelleno && (
+                    <div className="mt-2 grid grid-cols-[1fr_auto] items-start gap-2 border-l-2 border-sky-500/40 pl-2">
                       <div className="min-w-0">
                         <label htmlFor={`material-${z.id}`} className={claseEtiquetaCampo}>
                           {t('field.fillMaterial')}
@@ -398,68 +462,26 @@ export default function ZoneList() {
                         id={`contr-${z.id}`}
                         etiqueta={t('field.shrink')}
                         valorManual={z.contraccionManual}
-                        valorPorDefecto={contrPorDefecto.valor}
+                        valorPorDefecto={f.contrPorDefecto.valor}
                         fuente={
-                          contrPorDefecto.origen === 'suelo'
+                          f.contrPorDefecto.origen === 'suelo'
                             ? pistaContraccion(z.fillMaterial, t)
-                            : t('pct.noMaterial', { value: pct(contrPorDefecto.valor) })
+                            : t('pct.noMaterial', { value: pct(f.contrPorDefecto.valor) })
                         }
                         maximo={CONTRACCION_MAX_PCT}
                         onChange={(fraccion) => updateZone(z.id, { contraccionManual: fraccion })}
                       />
                       <div className="col-span-2">
                         <CampoPorcentaje
-                          id={`abund-${z.id}`}
+                          id={`abund-relleno-${z.id}`}
                           etiqueta={t('field.swellHaul')}
-                          valorManual={z.abundamientoManual}
-                          valorPorDefecto={abundPorDefecto.valor}
-                          fuente={t('pct.haulHint', { value: pct(abundPorDefecto.valor) })}
+                          valorManual={z.abundamientoRellenoManual}
+                          valorPorDefecto={f.abundRellenoPorDefecto.valor}
+                          fuente={t('pct.haulHint', { value: pct(f.abundRellenoPorDefecto.valor) })}
                           maximo={ABUNDAMIENTO_MAX_PCT}
-                          onChange={(fraccion) => updateZone(z.id, { abundamientoManual: fraccion })}
+                          onChange={(fraccion) => updateZone(z.id, { abundamientoRellenoManual: fraccion })}
                         />
                       </div>
-                    </div>
-                  ) : (
-                    <div className="mt-2 grid grid-cols-[1fr_auto] items-start gap-2">
-                      <div className="min-w-0">
-                        <label htmlFor={`suelo-${z.id}`} className={claseEtiquetaCampo}>
-                          {t('field.soilType')}
-                        </label>
-                        <select
-                          id={`suelo-${z.id}`}
-                          value={z.soilType ?? ''}
-                          onChange={(e) =>
-                            // Al cambiar el suelo se descarta el abundamiento manual y se prellena con el del suelo.
-                            updateZone(z.id, {
-                              soilType: esSoilType(e.target.value) ? e.target.value : undefined,
-                              abundamientoManual: undefined,
-                            })
-                          }
-                          className={claseSelect}
-                        >
-                          <option value="">{t('common.unspecified')}</option>
-                          {TIPOS_SUELO.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {etiquetaSuelo(s.id, t)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      {/* key: al cambiar el suelo se reinicia el campo con el nuevo valor típico. */}
-                      <CampoPorcentaje
-                        key={z.soilType ?? 'sin-suelo'}
-                        id={`abund-${z.id}`}
-                        etiqueta={t('field.swell')}
-                        valorManual={z.abundamientoManual}
-                        valorPorDefecto={abundPorDefecto.valor}
-                        fuente={
-                          abundPorDefecto.origen === 'suelo'
-                            ? pistaAbundamiento(z.soilType, t)
-                            : t('pct.noSoil', { value: pct(abundPorDefecto.valor) })
-                        }
-                        maximo={ABUNDAMIENTO_MAX_PCT}
-                        onChange={(fraccion) => updateZone(z.id, { abundamientoManual: fraccion })}
-                      />
                     </div>
                   )}
                 </li>
@@ -476,27 +498,29 @@ export default function ZoneList() {
           <tbody className="[&_td]:py-0.5 [&_td:last-child]:text-right">
             <tr>
               <td className="text-red-300">{t('totals.cutBank')}</td>
-              <td className="text-slate-100">{vol(tot.corte)}</td>
+              <td className="text-slate-100" data-total="cut-bank">{vol(tot.corteBanco)}</td>
             </tr>
             <tr>
               <td className="text-red-300">{t('totals.cutLoose')}</td>
-              <td className="text-slate-100">{vol(corteSuelto)}</td>
+              <td className="text-slate-100" data-total="cut-loose">{vol(tot.corteSuelto)}</td>
             </tr>
             <tr>
               <td className="pt-2 text-sky-300">{t('totals.fillCompacted')}</td>
-              <td className="pt-2 text-slate-100">{vol(tot.relleno)}</td>
+              <td className="pt-2 text-slate-100" data-total="fill-compacted">{vol(tot.rellenoCompactado)}</td>
             </tr>
             <tr>
               <td className="text-sky-300">{t('totals.fillNeeded')}</td>
-              <td className="text-slate-100">{vol(rellenoBanco)}</td>
+              <td className="text-slate-100" data-total="fill-needed">{vol(tot.rellenoNecesario)}</td>
             </tr>
             <tr>
               <td className="text-sky-300">{t('totals.fillLoose')}</td>
-              <td className="text-slate-100">{vol(rellenoSuelto)}</td>
+              <td className="text-slate-100" data-total="fill-loose">{vol(tot.rellenoSuelto)}</td>
             </tr>
             <tr className="border-t border-slate-800">
               <td className="text-slate-300">{t('totals.net')}</td>
-              <td className={tot.neto >= 0 ? 'text-emerald-300' : 'text-amber-300'}>{vol(tot.neto)}</td>
+              <td data-total="net" className={tot.neto >= 0 ? 'text-emerald-300' : 'text-amber-300'}>
+                {`${tot.neto > 0 ? '+' : ''}${vol(tot.neto)}`}
+              </td>
             </tr>
             <tr>
               <td className="pt-2 text-slate-400">{t('totals.tripsCut', { capacity: capacidad })}</td>

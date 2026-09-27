@@ -6,13 +6,17 @@ import { useProjectStore } from '../store/projectStore';
 import { useT } from '../i18n/useT';
 import { CLOSE_RADIUS_PX, distance, planToScreen, polygonAreaM2, polygonCentroid } from '../lib/geometry';
 import { formatearArea, formatearLongitud, formatearNumero } from '../lib/units';
-import { nombreZona } from '../lib/zones';
+import { movimientoZona, nombreZona, type MovimientoZona } from '../lib/zones';
 import type { Point } from '../types';
 
-const COLORES = {
+// Color según las profundidades: solo corte = rojo, solo relleno = azul, corte + relleno = morado,
+// sin profundidad = gris.
+const COLORES: Record<MovimientoZona, { relleno: string; rellenoSel: string; borde: string }> = {
   corte: { relleno: 'rgba(239, 68, 68, 0.25)', rellenoSel: 'rgba(239, 68, 68, 0.42)', borde: '#dc2626' },
   relleno: { relleno: 'rgba(14, 165, 233, 0.25)', rellenoSel: 'rgba(14, 165, 233, 0.42)', borde: '#0284c7' },
-} as const;
+  mixta: { relleno: 'rgba(168, 85, 247, 0.25)', rellenoSel: 'rgba(168, 85, 247, 0.42)', borde: '#9333ea' },
+  ninguno: { relleno: 'rgba(100, 116, 139, 0.22)', rellenoSel: 'rgba(100, 116, 139, 0.38)', borde: '#475569' },
+};
 const AMBAR = '#f59e0b';
 const CIAN = '#0891b2';
 const FUENTE_PX = 12;
@@ -106,7 +110,7 @@ export default function DrawingLayer({ puntos, rect, cursor }: Props) {
         .sort((a, b) => Number(a.z.id === seleccionada) - Number(b.z.id === seleccionada))
         .map(({ z, i }) => {
           const sel = z.id === seleccionada;
-          const c = COLORES[z.tipo];
+          const c = COLORES[movimientoZona(z)];
           const centro = polygonCentroid(z.puntos);
           const area = metersPerPdfUnit
             ? formatearArea(polygonAreaM2(z.puntos, metersPerPdfUnit), sistema)

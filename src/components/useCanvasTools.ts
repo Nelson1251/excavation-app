@@ -84,9 +84,10 @@ export function useCanvasTools(stageRef: RefObject<Konva.Stage | null>, planList
       return false;
     }
     const { addZone, setZonaSeleccionada, sistemaUnidades, pageIndex: pagina } = useProjectStore.getState();
-    // Profundidad inicial redonda en el sistema actual (1 m o 3 ft); el usuario la ajusta en la lista.
-    const profundidad = sistemaUnidades === 'imperial' ? piesAMetros(3) : 1;
-    const id = addZone({ nombre: '', tipo: 'corte', pageIndex: pagina, puntos: pts, profundidad });
+    // Profundidad de corte inicial redonda en el sistema actual (1 m o 3 ft) y sin relleno; el usuario
+    // ajusta la profundidad de corte y/o la de relleno en la lista.
+    const cutDepth = sistemaUnidades === 'imperial' ? piesAMetros(3) : 1;
+    const id = addZone({ nombre: '', pageIndex: pagina, puntos: pts, cutDepth, fillDepth: 0 });
     setZonaSeleccionada(id);
     setAviso(null);
     return true;

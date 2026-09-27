@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { metersPerPdfUnitFromRatio } from '../lib/geometry';
 import { limitarPagina } from '../lib/pages';
+import { migrarZona, type ZonaEntrada } from '../lib/zones';
 import { SISTEMA_POR_DEFECTO } from '../lib/units';
 import { IDIOMA_POR_DEFECTO, esIdioma } from '../i18n';
 import { DENSIDAD_ASFALTO_POR_DEFECTO } from '../lib/asphalt';
@@ -40,11 +41,15 @@ interface ProjectActions {
   setPuntosCalibracion: (puntos: Point[]) => void;
   /**
    * Agrega una zona y devuelve su id. Con `nombre: ''` se muestra un nombre por defecto en el
-   * idioma actual ("Zone n" / "Zona n").
+   * idioma actual ("Zone n" / "Zona n"). Acepta también el modelo antiguo (`tipo` + `profundidad`),
+   * que se migra con migrarZona() a `cutDepth` / `fillDepth`.
    */
-  addZone: (zone: Omit<Zone, 'id'>) => string;
+  addZone: (zone: ZonaEntrada) => string;
   setZonaSeleccionada: (id: string | null) => void;
-  /** Actualiza propiedades de una zona (p. ej. profundidad o soilType; soilType: undefined = sin especificar). */
+  /**
+   * Actualiza propiedades de una zona (p. ej. cutDepth, fillDepth o soilType; soilType: undefined =
+   * sin especificar). Las profundidades se guardan como magnitudes ≥ 0.
+   */
   updateZone: (id: string, cambios: Partial<Omit<Zone, 'id'>>) => void;
   removeZone: (id: string) => void;
   setFactors: (factors: Partial<Factors>) => void;
@@ -77,7 +82,6 @@ const zonasEjemplo: Zone[] = [
     id: 'z-ejemplo-1',
     nombre: '', // el nombre visible sale de nombreClave (traducido al mostrar)
     nombreClave: 'zone.sample.buildingPad',
-    tipo: 'corte',
     pageIndex: 0,
     puntos: [
       { x: 380, y: 300 },
@@ -85,13 +89,13 @@ const zonasEjemplo: Zone[] = [
       { x: 620, y: 460 },
       { x: 380, y: 460 },
     ],
-    profundidad: 1.5,
+    cutDepth: 1.5, // corte de 1.5 m, sin relleno
+    fillDepth: 0,
   },
   {
     id: 'z-ejemplo-2',
     nombre: '',
     nombreClave: 'zone.sample.parking',
-    tipo: 'relleno',
     pageIndex: 0,
     puntos: [
       { x: 650, y: 480 },
@@ -99,7 +103,8 @@ const zonasEjemplo: Zone[] = [
       { x: 820, y: 630 },
       { x: 650, y: 630 },
     ],
-    profundidad: 0.8,
+    cutDepth: 0,
+    fillDepth: 0.8, // relleno de 0.8 m, sin corte
   },
 ];
 
@@ -222,12 +227,12 @@ export const useProjectStore = create<ProjectStore>()((set, get) => ({
   setPuntosCalibracion: (puntosCalibracion) => set({ puntosCalibracion: puntosCalibracion.slice(0, 2) }),
   addZone: (zone) => {
     const id = nuevoId();
-    set({ zones: [...get().zones, { ...zone, id }] });
+    set({ zones: [...get().zones, { ...migrarZona(zone), id }] });
     return id;
   },
   setZonaSeleccionada: (zonaSeleccionada) => set({ zonaSeleccionada }),
   updateZone: (id, cambios) =>
-    set((s) => ({ zones: s.zones.map((z) => (z.id === id ? { ...z, ...cambios } : z)) })),
+    set((s) => ({ zones: s.zones.map((z) => (z.id === id ? migrarZona({ ...z, ...cambios }) : z)) })),
   removeZone: (id) =>
     set((s) => ({
       zones: s.zones.filter((z) => z.id !== id),

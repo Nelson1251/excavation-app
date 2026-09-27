@@ -16,9 +16,6 @@ export interface Point {
   y: number;
 }
 
-/** Tipo de movimiento de tierra de una zona. */
-export type TipoZona = 'corte' | 'relleno';
-
 /** Zona (polígono) dibujada sobre el plano. */
 export interface Zone {
   id: string;
@@ -26,24 +23,37 @@ export interface Zone {
   nombre: string;
   /** Clave i18n del nombre (zonas de ejemplo); se traduce al mostrar y sigue el selector EN | ES. */
   nombreClave?: Clave;
-  tipo: TipoZona;
   /** Página (hoja) del PDF donde está dibujada, basada en 0. Cada página tiene su propia escala. */
   pageIndex: number;
   /** Vértices del polígono en unidades PDF. */
   puntos: Point[];
-  /** Profundidad (corte) o espesor (relleno) promedio, en metros. */
-  profundidad: number;
-  /** Tipo de suelo (opcional; sin valor = "Sin especificar"). Ver src/lib/soils.ts. */
+  /**
+   * Profundidad promedio de CORTE en metros (magnitud ≥ 0; 0 = la zona no tiene corte).
+   * Volumen de corte en banco = área × cutDepth. En un neto con signo el corte es +.
+   */
+  cutDepth: number;
+  /**
+   * Espesor promedio de RELLENO compactado en metros (magnitud ≥ 0; 0 = la zona no tiene relleno).
+   * Volumen de relleno compactado = área × fillDepth. En un neto con signo el relleno es −.
+   * Una misma zona puede tener corte y relleno a la vez.
+   */
+  fillDepth: number;
+  /** Tipo de suelo de la parte de corte (opcional; sin valor = "Sin especificar"). Ver src/lib/soils.ts. */
   soilType?: SoilType;
   /**
-   * Abundamiento manual de la zona como fracción (0.25 = 25 %). Si no hay valor se usa el
+   * Abundamiento manual del CORTE como fracción (0.25 = 25 %). Si no hay valor se usa el
    * representativo del tipo de suelo y, si tampoco hay suelo, el abundamiento del proyecto.
    */
   abundamientoManual?: number;
-  /** Material de relleno (solo zonas de relleno; sin valor = "Sin especificar"). Ver src/lib/soils.ts. */
+  /**
+   * Abundamiento manual para acarrear el material de RELLENO (fracción). Si no hay valor se usa el
+   * abundamiento del proyecto (el tipo de suelo del corte no se aplica al material de relleno).
+   */
+  abundamientoRellenoManual?: number;
+  /** Material de la parte de relleno (sin valor = "Sin especificar"). Ver src/lib/soils.ts. */
   fillMaterial?: FillMaterial;
   /**
-   * Contracción manual de la zona como fracción (0.20 = 20 %). Si no hay valor se usa la
+   * Contracción manual del relleno como fracción (0.20 = 20 %). Si no hay valor se usa la
    * representativa del material de relleno y, si tampoco hay material, la del proyecto.
    */
   contraccionManual?: number;

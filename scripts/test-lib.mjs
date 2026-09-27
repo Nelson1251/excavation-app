@@ -1,5 +1,6 @@
 // Prueba rápida (sin dependencias extra) de los módulos puros de src/lib:
-// units.ts (conversión/formato), factors.ts, volumes.ts, soils.ts (abundamiento y contracción) y
+// units.ts (conversión/formato), factors.ts, volumes.ts (corte y relleno por zona), zones.ts
+// (migración tipo/profundidad → cutDepth/fillDepth), soils.ts (abundamiento y contracción) y
 // geometry.ts (área shoelace, escala, rectángulo por arrastre, conversión pantalla ↔ plano).
 // Transpila los módulos con el compilador de TypeScript ya instalado y los importa desde un
 // directorio temporal. Uso: npm test
@@ -12,7 +13,7 @@ import ts from 'typescript';
 
 const raiz = join(fileURLToPath(import.meta.url), '..', '..');
 // Módulos puros a probar (rutas relativas a src/, sin extensión).
-const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index', 'lib/geometry', 'lib/canvasHint', 'lib/pages', 'store/projectStore'];
+const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index', 'lib/geometry', 'lib/canvasHint', 'lib/pages', 'store/projectStore', 'lib/zones'];
 // El directorio temporal va dentro de node_modules para que las dependencias (p. ej. @turf/turf en
 // geometry.ts) se resuelvan desde los archivos transpilados; node_modules está en .gitignore.
 const dir = mkdtempSync(join(existsSync(join(raiz, 'node_modules')) ? join(raiz, 'node_modules') : tmpdir(), '.test-lib-'));
@@ -30,7 +31,7 @@ for (const m of modulos) {
   writeFileSync(join(dir, `${m}.mjs`), js);
 }
 const cargar = (m) => import(pathToFileURL(join(dir, `${m}.mjs`)).href);
-const [u, f, v, s, c, a, enMod, esMod, i18n, g, hint, pg, storeMod] = await Promise.all(modulos.map(cargar));
+const [u, f, v, s, c, a, enMod, esMod, i18n, g, hint, pg, storeMod, zn] = await Promise.all(modulos.map(cargar));
 rmSync(dir, { recursive: true, force: true });
 const tEn = i18n.crearTraductor('en');
 const tEs = i18n.crearTraductor('es');
@@ -143,14 +144,76 @@ igual(s.pistaContraccion('road-mix-2-minus', tEn), 'Typical shrink 8–14%', 'pi
 cerca(s.contraccionMaterial('rock-mix'), 0.05, 'rock mix 0–10 % → 5 %');
 igual(s.etiquetaMaterialRelleno('rock-mix', tEs), 'Rock mix (mezcla de roca)', 'etiqueta rock mix (es)');
 
-// Volúmenes por zona
-const vc = v.zoneVolumes('corte', 100, 0.25, 0.1);
-cerca(vc.banco, 100, 'corte: banco = geométrico');
-cerca(vc.suelto, 125, 'corte: suelto = banco × 1.25');
-const vr = v.zoneVolumes('relleno', 100, 0.25, 0.2);
-cerca(vr.geometrico, 100, 'relleno: compactado = geométrico');
-cerca(vr.banco, 125, 'relleno: material necesario = 100 / 0.8');
-cerca(vr.suelto, 156.25, 'relleno: suelto = 125 × 1.25');
+// Volúmenes por zona: cada zona tiene profundidad de corte y de relleno (ambas magnitudes ≥ 0).
+const fz = { abundamientoCorte: 0.25, abundamientoRelleno: 0.25, contraccion: 0.2 };
+const vc = v.zoneVolumes(100, 1, 0, fz);
+cerca(vc.corteBanco, 100, 'solo corte: banco = área × cutDepth');
+cerca(vc.corteSuelto, 125, 'solo corte: suelto = banco × 1.25');
+igual([vc.rellenoCompactado, vc.rellenoNecesario, vc.rellenoSuelto], [0, 0, 0], 'solo corte: relleno 0');
+cerca(vc.neto, 100, 'solo corte: neto +100');
+const vr = v.zoneVolumes(100, 0, 1, fz);
+igual([vr.corteBanco, vr.corteSuelto], [0, 0], 'solo relleno: corte 0');
+cerca(vr.rellenoCompactado, 100, 'solo relleno: compactado = área × fillDepth');
+cerca(vr.rellenoNecesario, 125, 'solo relleno: material necesario = 100 / 0.8');
+cerca(vr.rellenoSuelto, 156.25, 'solo relleno: suelto = 125 × 1.25');
+cerca(vr.neto, -100, 'solo relleno: neto −100');
+// Misma zona con corte 1.5 m y relleno 0.5 m sobre 200 m², abundamientos distintos.
+const vm = v.zoneVolumes(200, 1.5, 0.5, { abundamientoCorte: 0.3, abundamientoRelleno: 0.1, contraccion: 0.2 });
+cerca(vm.corteBanco, 300, 'mixta: corte = 200 × 1.5');
+cerca(vm.corteSuelto, 390, 'mixta: corte suelto = 300 × 1.3 (abund. del corte)');
+cerca(vm.rellenoCompactado, 100, 'mixta: relleno = 200 × 0.5');
+cerca(vm.rellenoNecesario, 125, 'mixta: necesario = 100 / 0.8');
+cerca(vm.rellenoSuelto, 137.5, 'mixta: relleno suelto = 125 × 1.1 (abund. del relleno)');
+cerca(vm.neto, 200, 'mixta: neto = 300 − 100');
+const v0 = v.zoneVolumes(200, 0, 0, fz);
+igual(Object.values(v0).every((x) => x === 0), true, 'sin profundidades: todo 0');
+cerca(v.zoneVolumes(100, -2, -1, fz).corteBanco, 0, 'profundidad negativa → 0');
+// Totales: corte y relleno se suman por separado.
+const tt = v.totals([vc, vr, vm]);
+cerca(tt.corteBanco, 400, 'totales: corte en banco 100 + 0 + 300');
+cerca(tt.corteSuelto, 515, 'totales: corte suelto 125 + 390');
+cerca(tt.rellenoCompactado, 200, 'totales: relleno compactado 0 + 100 + 100');
+cerca(tt.rellenoNecesario, 250, 'totales: material necesario 125 + 125');
+cerca(tt.rellenoSuelto, 293.75, 'totales: relleno suelto 156.25 + 137.5');
+cerca(tt.neto, 200, 'totales: neto = 400 − 200');
+igual(v.totals([]).neto, 0, 'totales vacíos');
+cerca(f.truckTrips(tt.corteSuelto, 10), 52, 'viajes corte: ceil(515 / 10)');
+
+// Migración del modelo antiguo (tipo + profundidad) a cutDepth / fillDepth.
+const base = { nombre: 'A', pageIndex: 1, puntos: [] };
+{
+  const m = zn.migrarZona({ ...base, id: 'a', tipo: 'corte', profundidad: 2, soilType: 'arcilla', abundamientoManual: 0.3 });
+  igual([m.cutDepth, m.fillDepth], [2, 0], 'zona de corte antigua d=2 → corte 2, relleno 0');
+  igual(['tipo' in m, 'profundidad' in m], [false, false], 'se quitan tipo y profundidad');
+  igual([m.id, m.nombre, m.pageIndex, m.soilType, m.abundamientoManual], ['a', 'A', 1, 'arcilla', 0.3], 'corte antigua conserva datos');
+}
+{
+  const m = zn.migrarZona({ ...base, tipo: 'relleno', profundidad: 0.8, fillMaterial: 'rock-mix', contraccionManual: 0.12, abundamientoManual: 0.15 });
+  igual([m.cutDepth, m.fillDepth], [0, 0.8], 'zona de relleno antigua d=0.8 → corte 0, relleno 0.8');
+  igual([m.fillMaterial, m.contraccionManual], ['rock-mix', 0.12], 'relleno antigua conserva material y contracción');
+  igual([m.abundamientoRellenoManual, m.abundamientoManual], [0.15, undefined], 'abund. manual del relleno antiguo → abundamientoRellenoManual');
+}
+igual(zn.migrarZona({ nombre: '', puntos: [], profundidad: 1.2 }).cutDepth, 1.2, 'sin tipo → corte (tipo por defecto)');
+igual(zn.migrarZona({ nombre: '', puntos: [], tipo: 'corte', profundidad: 1 }).pageIndex, 0, 'sin pageIndex → hoja 1');
+igual([zn.migrarZona({ nombre: '', puntos: [], tipo: 'relleno' }).fillDepth, zn.migrarZona({ nombre: '', puntos: [], tipo: 'corte', profundidad: NaN }).cutDepth], [0, 0], 'profundidad ausente o inválida → 0');
+{
+  const m = zn.migrarZona({ ...base, cutDepth: 1, fillDepth: -0.5, tipo: 'relleno', profundidad: 9 });
+  igual([m.cutDepth, m.fillDepth], [1, 0.5], 'campos nuevos prevalecen; relleno con signo − se guarda como magnitud');
+  const ya = { id: 'z', ...base, cutDepth: 1.5, fillDepth: 0.25, abundamientoRellenoManual: 0.1 };
+  igual(zn.migrarZona(ya), ya, 'zona ya migrada no cambia');
+}
+igual(['corte', 'relleno', 'mixta', 'ninguno'], [[1, 0], [0, 1], [1, 1], [0, 0]].map(([c, r]) => zn.movimientoZona({ cutDepth: c, fillDepth: r })), 'movimientoZona');
+// Factores por zona: el suelo afecta solo al corte; el acarreo del relleno usa manual → proyecto.
+{
+  const proy = { abundamiento: 0.25, contraccion: 0.1, capacidadCamion: 10 };
+  const fa = zn.factoresDeZona({ ...base, id: 'x', cutDepth: 1, fillDepth: 1, soilType: 'arcilla', fillMaterial: 'rock-mix' }, proy);
+  cerca(fa.paraVolumen.abundamientoCorte, s.abundamientoSuelo('arcilla'), 'abund. del corte = suelo');
+  cerca(fa.paraVolumen.abundamientoRelleno, 0.25, 'abund. del relleno = proyecto (no el suelo del corte)');
+  cerca(fa.paraVolumen.contraccion, 0.05, 'contracción = material de relleno');
+  const fm = zn.factoresDeZona({ ...base, id: 'x', cutDepth: 1, fillDepth: 1, abundamientoManual: 0.4, abundamientoRellenoManual: 0.12, contraccionManual: 0.2 }, proy);
+  igual([fm.paraVolumen.abundamientoCorte, fm.paraVolumen.abundamientoRelleno, fm.paraVolumen.contraccion], [0.4, 0.12, 0.2], 'valores manuales por parte');
+  igual([fm.abundCortePorDefecto.origen, fm.abundRellenoPorDefecto.origen], ['proyecto', 'proyecto'], 'por defecto sin suelo: proyecto');
+}
 
 // Concreto
 cerca(c.volumenPrisma(10, 5, 0.1), 5, 'losa 10 × 5 × 0.10 m = 5 m³');
@@ -383,7 +446,21 @@ igual(pg.paginasConZonas(zonasPg), [0, 2], 'hojas con zonas');
   S().setPuntosCalibracion([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
   S().setScale(0.5, { tipo: 'calibrada', referenciaM: 50, longitudPdf: 100 });
   igual(S().metersPerPdfUnit, 0.5, 'escala guardada en la hoja 3');
+  // Zonas de ejemplo en el modelo nuevo: plataforma corte 1.5 m, estacionamiento relleno 0.8 m.
+  igual(S().zones.map((z) => [z.cutDepth, z.fillDepth, 'tipo' in z, 'profundidad' in z]), [[1.5, 0, false, false], [0, 0.8, false, false]], 'zonas de ejemplo con cutDepth/fillDepth');
+  // addZone migra una zona con el modelo antiguo (tipo + profundidad).
   const idZ = S().addZone({ nombre: '', tipo: 'corte', pageIndex: 2, puntos: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], profundidad: 1 });
+  const zNueva = () => S().zones.find((z) => z.id === idZ);
+  igual([zNueva().cutDepth, zNueva().fillDepth, 'tipo' in zNueva()], [1, 0, false], 'addZone migra tipo/profundidad antiguos');
+  S().updateZone(idZ, { fillDepth: 0.4 });
+  igual([zNueva().cutDepth, zNueva().fillDepth], [1, 0.4], 'updateZone: la misma zona con corte y relleno');
+  S().updateZone(idZ, { cutDepth: -2 });
+  igual(zNueva().cutDepth, 2, 'updateZone guarda magnitudes ≥ 0');
+  S().updateZone(idZ, { cutDepth: 1 });
+  const idR = S().addZone({ nombre: 'R', tipo: 'relleno', pageIndex: 0, puntos: [], profundidad: 0.3, abundamientoManual: 0.2 });
+  const zr = S().zones.find((z) => z.id === idR);
+  igual([zr.cutDepth, zr.fillDepth, zr.abundamientoRellenoManual], [0, 0.3, 0.2], 'addZone migra relleno antiguo');
+  S().removeZone(idR);
   S().setZonaSeleccionada(idZ);
   S().setPuntosCalibracion([{ x: 1, y: 1 }]);
   S().setPageIndex(0);
