@@ -1,0 +1,9 @@
+{
+  "name": "excavation-app",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": { "label": "App (Vite)", "onAutoForward": "openBrowser" }
+  },
+  "postCreateCommand": "npm install"
+}
