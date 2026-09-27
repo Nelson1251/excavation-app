@@ -1,0 +1,182 @@
+// Prueba rápida (sin dependencias extra) de los módulos puros de src/lib:
+// units.ts (conversión/formato), factors.ts, volumes.ts y soils.ts (abundamiento y contracción).
+// Transpila los módulos con el compilador de TypeScript ya instalado y los importa desde un
+// directorio temporal. Uso: npm test
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, mkdirSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname, relative } from 'node:path';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+
+const raiz = join(fileURLToPath(import.meta.url), '..', '..');
+// Módulos puros a probar (rutas relativas a src/, sin extensión).
+const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index'];
+const dir = mkdtempSync(join(tmpdir(), 'lib-'));
+for (const m of modulos) {
+  const fuente = readFileSync(join(raiz, `src/${m}.ts`), 'utf8');
+  const { outputText } = ts.transpileModule(fuente, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, verbatimModuleSyntax: true },
+  });
+  // Importaciones relativas ('./factors', '../i18n') → archivos .mjs transpilados.
+  const js = outputText.replace(/from '(\.{1,2}\/[\w/-]+)'/g, (_, ruta) => {
+    const destino = join(dirname(join(dir, m)), ruta);
+    return `from '${ruta}${existsSync(join(raiz, 'src', relative(dir, destino)) + '.ts') ? '' : '/index'}.mjs'`;
+  });
+  mkdirSync(dirname(join(dir, m)), { recursive: true });
+  writeFileSync(join(dir, `${m}.mjs`), js);
+}
+const cargar = (m) => import(pathToFileURL(join(dir, `${m}.mjs`)).href);
+const [u, f, v, s, c, a, enMod, esMod, i18n] = await Promise.all(modulos.map(cargar));
+rmSync(dir, { recursive: true, force: true });
+const tEn = i18n.crearTraductor('en');
+const tEs = i18n.crearTraductor('es');
+
+let ok = 0;
+const cerca = (real, esperado, nombre, tol = 1e-9) => {
+  assert.ok(Math.abs(real - esperado) < tol, `${nombre}: se esperaba ${esperado}, se obtuvo ${real}`);
+  ok++;
+};
+const igual = (real, esperado, nombre) => {
+  assert.deepEqual(real, esperado, `${nombre}: se esperaba ${JSON.stringify(esperado)}, se obtuvo ${JSON.stringify(real)}`);
+  ok++;
+};
+
+// Pies + pulgadas → metros
+cerca(u.piesPulgadasAMetros(3, 6), 1.0668, '3 ft 6 in');
+cerca(u.piesPulgadasAMetros(0, 42), 1.0668, '0 ft 42 in');
+cerca(u.piesPulgadasAMetros(3.5, 0), 1.0668, '3.5 ft');
+cerca(u.piesAMetros(3.5), 1.0668, 'piesAMetros(3.5)');
+cerca(u.piesPulgadasAMetros(0, 6.5), 0.1651, '0 ft 6.5 in');
+cerca(u.piesPulgadasAMetros(1, 0), 0.3048, '1 ft');
+
+// Normalización de pulgadas ≥ 12
+igual(u.normalizarPiesPulgadas(3, 18), { pies: 4, pulgadas: 6 }, '3 ft 18 in → 4 ft 6 in');
+igual(u.normalizarPiesPulgadas(0, 42), { pies: 3, pulgadas: 6 }, '42 in → 3 ft 6 in');
+igual(u.normalizarPiesPulgadas(2, 12), { pies: 3, pulgadas: 0 }, '2 ft 12 in → 3 ft 0 in');
+igual(u.normalizarPiesPulgadas(0, 12.5), { pies: 1, pulgadas: 0.5 }, '12.5 in → 1 ft 0.5 in');
+igual(u.normalizarPiesPulgadas(0, 11.99), { pies: 0, pulgadas: 11.99 }, '11.99 in sin cambio');
+igual(u.normalizarPiesPulgadas(0, 1.0668 / 0.0254), { pies: 3, pulgadas: 6 }, 'metros → pies/pulg (1.0668 m)');
+
+// Formato pies-pulgadas (redondeo a 1/4")
+igual(u.formatearPiesPulgadas(1.0668), `3' 6"`, 'format(1.0668)');
+igual(u.formatearPiesPulgadas(0.2032), `0' 8"`, 'menos de 1 pie');
+igual(u.formatearPiesPulgadas(-0.2032), `-0' 8"`, 'negativo menor a 1 pie');
+igual(u.formatearPiesPulgadas(-1.0668), `-3' 6"`, 'negativo');
+igual(u.formatearPiesPulgadas(0), `0' 0"`, 'cero');
+igual(u.formatearPiesPulgadas(-0.001), `0' 0"`, 'negativo que redondea a cero');
+igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(3, 6.25)), `3' 6 1/4"`, '1/4 de pulgada');
+igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(3, 6.5)), `3' 6 1/2"`, '1/2 pulgada');
+igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(3, 6.8)), `3' 6 3/4"`, 'redondeo a 3/4');
+igual(u.formatearPiesPulgadas(u.piesPulgadasAMetros(0, 11.9)), `1' 0"`, 'acarreo 11.9" → 1\' 0"');
+igual(u.formatearPiesPulgadas(20), `65' 7 1/2"`, '20 m');
+igual(u.formatearPiesPulgadas(0.3048), `1' 0"`, '1 pie exacto');
+
+// Áreas y volúmenes
+cerca(u.m2APies2(0.09290304), 1, '1 ft²');
+cerca(u.m2APies2(1), 10.763910416709722, '1 m² en ft²');
+cerca(u.m3AYardas3(0.764554857984), 1, '1 yd³');
+cerca(u.m3AYardas3(1), 1.3079506193143922, '1 m³ en yd³');
+cerca(u.yardas3AM3(u.m3AYardas3(14)), 14, 'ida y vuelta m³ ↔ yd³');
+
+// Formato con unidades
+igual(u.formatearVolumen(0.764554857984, 'imperial'), '1.00 yd³', 'formatearVolumen imperial');
+igual(u.formatearVolumen(2, 'metrico'), '2.00 m³', 'formatearVolumen métrico');
+igual(u.formatearArea(0.09290304, 'imperial'), '1.00 ft²', 'formatearArea imperial');
+igual(u.formatearLongitud(1.0668, 'imperial'), `3' 6"`, 'formatearLongitud imperial');
+igual(u.formatearLongitud(1.5, 'metrico'), '1.50 m', 'formatearLongitud métrico');
+
+// Lectura de campos numéricos
+igual(u.leerNumero('6.5'), 6.5, 'leerNumero punto');
+igual(u.leerNumero('6,5'), 6.5, 'leerNumero coma');
+igual(u.leerNumero(''), null, 'leerNumero vacío');
+igual(u.leerNumero('abc'), null, 'leerNumero inválido');
+
+// Abundamiento: suelto = banco × (1 + abundamiento)
+cerca(f.looseVolume(100, 0.25), 125, '100 m³ en banco con 25 % = 125 m³ sueltos');
+cerca(f.truckTrips(125, 14), 9, 'viajes de camión con volumen suelto (125 / 14 → 9)');
+// Contracción: material necesario = compactado / (1 − contracción)
+cerca(f.fillMaterialNeeded(100, 0.2), 125, '100 m³ compactados con 20 % = 125 m³ necesarios');
+
+// Tipos de suelo: valor representativo = punto medio del rango típico
+cerca(s.abundamientoSuelo('arcilla'), 0.35, 'arcilla 30–40 % → 35 %');
+cerca(s.abundamientoSuelo('arena'), 0.125, 'arena 10–15 % → 12.5 %');
+cerca(s.abundamientoSuelo('roca-dura'), 0.65, 'roca dura 50–80 % → 65 %');
+igual(s.abundamientoSuelo(undefined), undefined, 'sin suelo → undefined');
+igual(s.abundamientoDeZona({}, 0.25), { valor: 0.25, origen: 'proyecto' }, 'sin suelo usa el del proyecto');
+igual(s.abundamientoDeZona({ soilType: 'arcilla' }, 0.25).origen, 'suelo', 'con suelo usa el del suelo');
+igual(s.abundamientoDeZona({ soilType: 'arcilla', abundamientoManual: 0.3 }, 0.25), { valor: 0.3, origen: 'manual' }, 'manual tiene prioridad');
+igual(s.etiquetaSuelo(undefined, tEn), 'Unspecified', 'etiqueta sin suelo (en)');
+igual(s.etiquetaSuelo(undefined, tEs), 'Sin especificar', 'etiqueta sin suelo (es)');
+igual(s.etiquetaSuelo('arcilla', tEn), 'Clay', 'suelo en inglés');
+igual(s.etiquetaSuelo('arcilla', tEs), 'Arcilla', 'suelo en español');
+igual(s.pistaAbundamiento('arcilla', tEn), 'Typical swell 30–40%', 'pista abundamiento (en)');
+igual(s.TIPOS_SUELO.length, 11, '11 tipos de suelo');
+
+// Materiales de relleno: contracción representativa
+cerca(s.contraccionMaterial('relleno-comun'), 0.2, 'relleno común 15–25 % → 20 %');
+cerca(s.contraccionMaterial('grava'), 0.075, 'grava 5–10 % → 7.5 %');
+igual(s.contraccionDeZona({}, 0.1), { valor: 0.1, origen: 'proyecto' }, 'sin material usa la del proyecto');
+igual(s.contraccionDeZona({ fillMaterial: 'tepetate', contraccionManual: 0.12 }, 0.1).valor, 0.12, 'contracción manual');
+igual(s.etiquetaMaterialRelleno('base-hidraulica', tEn), 'Hydraulic base', 'etiqueta material (en)');
+igual(s.etiquetaMaterialRelleno('base-hidraulica', tEs), 'Base hidráulica', 'etiqueta material (es)');
+igual(s.MATERIALES_RELLENO.length, 15, '15 materiales de relleno');
+cerca(s.contraccionMaterial('solo-suelo'), 0.175, 'Soil only 10–25 % → 17.5 %');
+igual(s.etiquetaMaterialRelleno('solo-suelo', tEn), 'Soil only', 'Soil only (en)');
+igual(s.etiquetaMaterialRelleno('solo-suelo', tEs), 'Tierra (solo suelo)', 'Soil only (es)');
+cerca(s.contraccionMaterial('grava-1'), 0.09, 'Grava 1" 6–12 % → 9 %');
+igual(s.etiquetaMaterialRelleno('grava-1', tEn), 'Gravel 1"', 'etiqueta Gravel 1"');
+igual(s.descripcionMaterialRelleno('grava-1', tEs), 'Grava que pasa malla de 1 pulgada', 'descripción Grava 1" (es)');
+cerca(s.contraccionMaterial('road-mix-tricorel'), 0.15, 'Road mix / Tricorel 10–20 % → 15 %');
+igual(s.pistaContraccion('road-mix-tricorel', tEs), 'Contr. típica 10–20 % (valor estimado, ajustar)', 'pista Road mix / Tricorel (es)');
+igual(s.pistaContraccion('road-mix-tricorel', tEn), 'Typical shrink 10–20% (estimated value, adjust)', 'pista Road mix / Tricorel (en)');
+cerca(s.contraccionMaterial('road-mix-2-minus'), 0.11, 'Road mix 2" minus 8–14 % → 11 %');
+igual(s.etiquetaMaterialRelleno('road-mix-2-minus', tEn), 'Road mix 2" minus', 'etiqueta Road mix 2" minus');
+igual(s.descripcionMaterialRelleno('road-mix-2-minus', tEn), 'Passes 2-inch sieve', 'descripción Road mix 2" minus');
+igual(s.pistaContraccion('road-mix-2-minus', tEn), 'Typical shrink 8–14%', 'pista Road mix 2" minus');
+cerca(s.contraccionMaterial('rock-mix'), 0.05, 'rock mix 0–10 % → 5 %');
+igual(s.etiquetaMaterialRelleno('rock-mix', tEs), 'Rock mix (mezcla de roca)', 'etiqueta rock mix (es)');
+
+// Volúmenes por zona
+const vc = v.zoneVolumes('corte', 100, 0.25, 0.1);
+cerca(vc.banco, 100, 'corte: banco = geométrico');
+cerca(vc.suelto, 125, 'corte: suelto = banco × 1.25');
+const vr = v.zoneVolumes('relleno', 100, 0.25, 0.2);
+cerca(vr.geometrico, 100, 'relleno: compactado = geométrico');
+cerca(vr.banco, 125, 'relleno: material necesario = 100 / 0.8');
+cerca(vr.suelto, 156.25, 'relleno: suelto = 125 × 1.25');
+
+// Concreto
+cerca(c.volumenPrisma(10, 5, 0.1), 5, 'losa 10 × 5 × 0.10 m = 5 m³');
+cerca(c.volumenCilindro(0.3, 3), 0.2120575, 'columna redonda d 0.30 h 3 = 0.212 m³', 1e-6);
+cerca(c.conDesperdicio(5, 0.05), 5.25, '5 % de desperdicio sobre 5 m³ = 5.25');
+const losa = { tipo: 'losa', forma: 'rectangular', largo: 10, ancho: 5, alto: 0.1, diametro: 0, cantidad: 2, desperdicio: 0.05 };
+igual(Object.values(c.volumenesConcreto(losa)).map((x) => Math.round(x * 1e6) / 1e6), [10, 10.5], '2 losas: neto 10, pedido 10.5');
+const col = { tipo: 'columna', forma: 'redonda', largo: 9, ancho: 9, alto: 3, diametro: 0.3, cantidad: 1, desperdicio: 0 };
+cerca(c.volumenesConcreto(col).neto, 0.2120575, 'columna redonda usa diámetro (ignora largo/ancho)', 1e-6);
+cerca(c.totalesConcreto([losa, col]).pedido, 10.5 + 0.2120575, 'totales de concreto', 1e-6);
+
+// Asfalto
+const calle = { largo: 100, ancho: 10, espesor: 0.05, cantidad: 1, desperdicio: 0.05 };
+const ca = a.calculoAsfalto(calle, a.DENSIDAD_ASFALTO_POR_DEFECTO);
+cerca(ca.area, 1000, 'asfalto: área 100 × 10 = 1000 m²');
+cerca(ca.neto, 50, 'asfalto: 100 × 10 × 0.05 = 50 m³');
+cerca(ca.pedido, 52.5, 'asfalto: +5 % = 52.5 m³');
+cerca(ca.toneladas, 123.375, 'asfalto: 52.5 × 2.35 = 123.4 t');
+igual(u.formatearNumero(ca.toneladas, 1), '123.4', 'tonelaje redondeado 123.4');
+cerca(u.toneladasACortas(0.90718474), 1, '1 ton corta = 0.90718474 t');
+cerca(u.tM3ALbFt3(2.35), 146.705706, '2.35 t/m³ ≈ 146.7 lb/ft³', 1e-6);
+cerca(u.lbFt3ATM3(u.tM3ALbFt3(2.35)), 2.35, 'ida y vuelta densidad');
+cerca(a.totalesAsfalto([calle, calle], 2.35).toneladas, 246.75, 'totales de asfalto');
+
+// i18n
+igual(i18n.traducir('en', 'zones.heading', { count: 3 }), 'Zones (3)', 'interpolación en');
+igual(i18n.traducir('es', 'zones.heading', { count: 3 }), 'Zonas (3)', 'interpolación es');
+igual(Object.keys(esMod.es).sort(), Object.keys(enMod.en).sort(), 'en y es tienen las mismas claves');
+for (const id of s.TIPOS_SUELO.map((x) => x.id)) assert.ok(`soil.${id}` in enMod.en, `falta soil.${id}`);
+for (const id of s.MATERIALES_RELLENO.map((x) => x.id)) assert.ok(`fill.${id}` in enMod.en, `falta fill.${id}`);
+
+console.log(`✓ src/lib + src/i18n: ${ok} comprobaciones correctas`);
+// Tabla de referencia (para documentación)
+for (const t of s.TIPOS_SUELO) console.log(`  suelo    ${s.etiquetaSuelo(t.id, tEn)}: ${t.abundamientoTipico.min}–${t.abundamientoTipico.max} % → ${s.abundamientoSuelo(t.id) * 100} %`);
+for (const m of s.MATERIALES_RELLENO) console.log(`  relleno  ${s.etiquetaMaterialRelleno(m.id, tEn)}: ${m.contraccionTipica.min}–${m.contraccionTipica.max} % → ${s.contraccionMaterial(m.id) * 100} %`);

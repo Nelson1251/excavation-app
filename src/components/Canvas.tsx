@@ -7,6 +7,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 // Vite entrega la URL del worker empaquetado; pdf.js lo carga en un Web Worker.
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { useProjectStore } from '../store/projectStore';
+import { useT } from '../i18n/useT';
 import type { PdfSource } from '../types';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -28,6 +29,7 @@ type Resultado = {
 };
 
 export default function Canvas() {
+  const t = useT();
   const contenedorRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
 
@@ -191,9 +193,11 @@ export default function Canvas() {
       {estado !== 'listo' && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="rounded-lg bg-slate-800/90 px-4 py-2 text-sm text-slate-200 shadow">
-            {estado === 'vacio' && 'Carga un PDF para comenzar.'}
-            {estado === 'cargando' && 'Cargando plano…'}
-            {estado === 'error' && <span className="text-red-300">Error al cargar el PDF: {resultado?.error}</span>}
+            {estado === 'vacio' && t('canvas.empty')}
+            {estado === 'cargando' && t('canvas.loading')}
+            {estado === 'error' && (
+              <span className="text-red-300">{t('canvas.error', { message: resultado?.error ?? '' })}</span>
+            )}
           </div>
         </div>
       )}
@@ -201,11 +205,12 @@ export default function Canvas() {
       {/* Barra de estado */}
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex justify-between bg-slate-900/80 px-3 py-1 text-xs text-slate-400">
         <span>
-          {pdfSource?.nombre ?? 'Sin PDF'}
-          {pagina.ancho > 0 && ` · ${pagina.ancho.toFixed(0)} × ${pagina.alto.toFixed(0)} u. PDF`}
+          {pdfSource?.nombre ?? t('canvas.noPdf')}
+          {pagina.ancho > 0 && ` · ${pagina.ancho.toFixed(0)} × ${pagina.alto.toFixed(0)} ${t('canvas.pdfUnits')}`}
         </span>
         <span>
-          {cursor ? `x: ${cursor.x.toFixed(1)}  y: ${cursor.y.toFixed(1)} (u. PDF)` : '—'} · Zoom {(vista.zoom * 100).toFixed(0)} %
+          {cursor ? `x: ${cursor.x.toFixed(1)}  y: ${cursor.y.toFixed(1)} (${t('canvas.pdfUnits')})` : '—'} ·{' '}
+          {t('canvas.zoom')} {(vista.zoom * 100).toFixed(0)} %
         </span>
       </div>
     </div>

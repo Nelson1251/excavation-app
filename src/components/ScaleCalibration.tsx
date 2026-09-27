@@ -1,56 +1,74 @@
 // Panel de calibración de escala (stub).
 import { useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
+import { useT } from '../i18n/useT';
+import { PDF_UNITS_PER_INCH } from '../lib/geometry';
+import { formatearLongitud, formatearNumero, metrosAPies } from '../lib/units';
+import DistanceInput from './DistanceInput';
+
+/** Longitud de la barra de escala del plano de prueba (m). */
+const BARRA_EJEMPLO_M = 20;
 
 export default function ScaleCalibration() {
+  const t = useT();
   const metersPerPdfUnit = useProjectStore((s) => s.metersPerPdfUnit);
   const herramienta = useProjectStore((s) => s.herramienta);
-  const [distanciaReal, setDistanciaReal] = useState('20');
+  const sistema = useProjectStore((s) => s.sistemaUnidades);
+  // Distancia real de referencia, siempre en metros (null = entrada inválida).
+  const [distanciaRealM, setDistanciaRealM] = useState<number | null>(BARRA_EJEMPLO_M);
 
   // TODO: al pulsar "Calibrar escala", el usuario marcará dos puntos en el lienzo;
-  // luego se calculará metersPerPdfUnitFromReference(a, b, distanciaReal) y se llamará a setScale().
+  // luego se calculará metersPerPdfUnitFromReference(a, b, distanciaRealM) y se llamará a setScale().
   const aplicar = () => {
-    console.info('TODO: calibración pendiente. Distancia real:', distanciaReal, 'm');
+    console.info('TODO: calibración pendiente. Distancia real (m):', distanciaRealM);
   };
 
   // Equivalente 1:N suponiendo impresión a tamaño real (1 u. PDF = 1/72 in).
   const escalaAprox = metersPerPdfUnit ? Math.round((metersPerPdfUnit * 72) / 0.0254) : null;
 
+  const textoEscala = !metersPerPdfUnit
+    ? t('scale.uncalibrated')
+    : sistema === 'imperial'
+      ? // Por unidad PDF el valor es muy pequeño para pies-pulgadas: se muestra en pies decimales
+        // y, además, cuánto representa 1 pulgada de papel en pies y pulgadas.
+        t('scale.imperial', {
+          value: formatearNumero(metrosAPies(metersPerPdfUnit), 4),
+          paper: formatearLongitud(metersPerPdfUnit * PDF_UNITS_PER_INCH, sistema),
+          ratio: escalaAprox ?? '',
+        })
+      : t('scale.metric', { value: metersPerPdfUnit.toFixed(4), ratio: escalaAprox ?? '' });
+
+  const barra =
+    sistema === 'imperial'
+      ? `${formatearLongitud(BARRA_EJEMPLO_M, sistema)} (${BARRA_EJEMPLO_M} m)`
+      : `${BARRA_EJEMPLO_M} m`;
+
   return (
     <section className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-      <h2 className="mb-2 text-sm font-semibold text-slate-200">Escala</h2>
-      <p className="mb-3 text-xs text-slate-400">
-        {metersPerPdfUnit
-          ? `${metersPerPdfUnit.toFixed(4)} m por unidad PDF (≈ 1:${escalaAprox})`
-          : 'Escala sin calibrar'}
-      </p>
-      <label className="mb-1 block text-xs text-slate-400" htmlFor="distancia-real">
-        Distancia real (metros)
-      </label>
-      <div className="flex gap-2">
-        <input
-          id="distancia-real"
-          type="number"
-          min="0"
-          step="0.01"
-          value={distanciaReal}
-          onChange={(e) => setDistanciaReal(e.target.value)}
-          className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none focus:border-amber-500"
-        />
+      <h2 className="mb-2 text-sm font-semibold text-slate-200">{t('scale.heading')}</h2>
+      <p className="mb-3 text-xs text-slate-400">{textoEscala}</p>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <DistanceInput
+            id="distancia-real"
+            etiqueta={t('scale.realDistance')}
+            valorM={distanciaRealM}
+            onChange={setDistanciaRealM}
+            permitirCero={false}
+          />
+        </div>
         <button
           type="button"
           onClick={aplicar}
           disabled
-          title="Próximamente"
-          className="rounded-md bg-slate-700 px-3 py-1 text-sm text-slate-400 disabled:cursor-not-allowed"
+          title={t('common.comingSoon')}
+          className="mt-5 rounded-md bg-slate-700 px-3 py-1 text-sm text-slate-400 disabled:cursor-not-allowed"
         >
-          Aplicar
+          {t('scale.apply')}
         </button>
       </div>
       <p className="mt-2 text-xs text-slate-500">
-        {herramienta === 'calibrar'
-          ? 'Modo calibración activo (en desarrollo): marca dos puntos sobre una cota conocida.'
-          : 'Próximamente: traza una línea sobre una distancia conocida (p. ej. la barra de 20 m).'}
+        {herramienta === 'calibrar' ? t('scale.calibrating') : t('scale.hint', { length: barra })}
       </p>
     </section>
   );

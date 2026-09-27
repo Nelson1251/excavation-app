@@ -1,4 +1,14 @@
 // Tipos compartidos de la aplicación de cubicación de excavación (corte y relleno).
+import type { SistemaUnidades } from '../lib/units';
+import type { FillMaterial, SoilType } from '../lib/soils';
+import type { Clave, Idioma } from '../i18n';
+import type { ConcreteElement } from '../lib/concrete';
+import type { AsphaltElement } from '../lib/asphalt';
+
+export type { AsphaltElement, ConcreteElement, FillMaterial, Idioma, SistemaUnidades, SoilType };
+
+/** Módulo visible: movimiento de tierras sobre el plano, concreto o asfalto. */
+export type Modulo = 'excavacion' | 'concreto' | 'asfalto';
 
 /** Punto en coordenadas del plano, expresado en unidades PDF (1 unidad = 1/72 pulgada en papel). */
 export interface Point {
@@ -13,18 +23,34 @@ export type TipoZona = 'corte' | 'relleno';
 export interface Zone {
   id: string;
   nombre: string;
+  /** Clave i18n del nombre (solo zonas de ejemplo); si existe, se muestra traducida en lugar de `nombre`. */
+  nombreClave?: Clave;
   tipo: TipoZona;
   /** Vértices del polígono en unidades PDF. */
   puntos: Point[];
   /** Profundidad (corte) o espesor (relleno) promedio, en metros. */
   profundidad: number;
+  /** Tipo de suelo (opcional; sin valor = "Sin especificar"). Ver src/lib/soils.ts. */
+  soilType?: SoilType;
+  /**
+   * Abundamiento manual de la zona como fracción (0.25 = 25 %). Si no hay valor se usa el
+   * representativo del tipo de suelo y, si tampoco hay suelo, el abundamiento del proyecto.
+   */
+  abundamientoManual?: number;
+  /** Material de relleno (solo zonas de relleno; sin valor = "Sin especificar"). Ver src/lib/soils.ts. */
+  fillMaterial?: FillMaterial;
+  /**
+   * Contracción manual de la zona como fracción (0.20 = 20 %). Si no hay valor se usa la
+   * representativa del material de relleno y, si tampoco hay material, la del proyecto.
+   */
+  contraccionManual?: number;
 }
 
 /** Factores de conversión de volúmenes. */
 export interface Factors {
-  /** Abundamiento (esponjamiento) como fracción: 0.25 = 25 %. */
+  /** Abundamiento (esponjamiento) general como fracción: 0.25 = 25 %. Se usa en zonas sin tipo de suelo ni valor manual. */
   abundamiento: number;
-  /** Contracción por compactación como fracción: 0.10 = 10 %. */
+  /** Contracción por compactación general como fracción: 0.10 = 10 %. Se usa en rellenos sin material ni valor manual. */
   contraccion: number;
   /** Capacidad del camión en m³ sueltos. */
   capacidadCamion: number;
@@ -62,4 +88,16 @@ export interface ProjectState {
   vista: Vista;
   /** Tamaño en píxeles del contenedor del lienzo (lo actualiza Canvas). */
   tamanoLienzo: { ancho: number; alto: number };
+  /** Sistema de unidades para mostrar y capturar distancias. Internamente todo se guarda en metros. */
+  sistemaUnidades: SistemaUnidades;
+  /** Idioma de la interfaz ('en' por defecto). Se guarda en localStorage como el sistema de unidades. */
+  language: Idioma;
+  /** Módulo visible en la interfaz. */
+  modulo: Modulo;
+  /** Elementos del módulo de concreto (dimensiones en metros). */
+  concreteElements: ConcreteElement[];
+  /** Elementos del módulo de asfalto (dimensiones en metros). */
+  asphaltElements: AsphaltElement[];
+  /** Densidad compactada del asfalto en t/m³ (por defecto 2.35, mezcla en caliente). */
+  densidadAsfalto: number;
 }

@@ -10,7 +10,7 @@ export function looseVolume(bankM3: number, swell: number): number {
  * dada la contracción por compactación (fracción, 0 ≤ shrink < 1).
  */
 export function fillMaterialNeeded(compactedM3: number, shrink: number): number {
-  if (shrink >= 1) throw new Error('La contracción debe ser menor que 1 (100 %).');
+  if (shrink >= 1) throw new Error('Compaction shrink must be less than 1 (100%).');
   return compactedM3 / (1 - shrink);
 }
 

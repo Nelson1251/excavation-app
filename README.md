@@ -1,95 +1,104 @@
-# Cubicación de excavación · Corte y relleno
+# Excavation takeoff · Cut and fill
 
-Aplicación web para la **cuantificación de volúmenes de movimiento de tierras (corte y relleno)** a partir de planos en PDF.
-El usuario carga un plano, calibra la escala, dibuja zonas (polígonos) sobre un lienzo interactivo, asigna a cada zona
-su tipo (corte o relleno) y su profundidad promedio, y obtiene áreas, volúmenes, balance neto, volúmenes con factores
-de abundamiento/contracción y número de viajes de camión.
+Web app for **earthwork quantity takeoff (cut and fill)** from PDF plans, plus simple **concrete** and **asphalt**
+quantity modules. The user loads a plan, calibrates the scale, draws zones (polygons) on an interactive canvas,
+assigns each zone its kind (cut or fill), depth, soil type / fill material, and gets areas, bank / loose / compacted
+volumes, material needed, net balance and truck trips.
 
-> Estado actual: **esqueleto del proyecto (fase 0)**. Funciona la carga y visualización del PDF con zoom y paneo;
-> la calibración y el dibujo de zonas están preparados como stubs.
+> Current status: **project skeleton (phase 0) + units, i18n, soils/fill materials, concrete and asphalt modules**.
+> PDF loading/zoom/pan works; scale calibration and zone drawing are still stubs. Excel/PDF export is not implemented
+> yet (see "Next steps").
+
+## Usage
+
+- **Language**: `EN | ES` toggle in the top bar (default English). Saved in `localStorage`
+  (`excavation-app:language`). Updates the page `<title>` and `<html lang>`.
+- **Units**: `Meters | Feet` toggle in the top bar (default Meters). Saved in `localStorage`
+  (`excavation-app:sistemaUnidades`). Everything is stored internally in meters / m² / m³.
+  - Meters: lengths in m, areas in m², volumes in m³.
+  - Feet: lengths shown as feet-inches rounded to the nearest 1/4" (e.g. `3' 6"`, `0' 8"`, `-3' 6 1/4"`),
+    areas in ft², volumes in yd³ (cubic yards), asphalt tonnage in US short tons.
+  - Distance inputs: one numeric field in Meters mode; two numeric fields (**ft** and **in**) in Feet mode.
+    Inches accept decimals (0–11.99); 12 or more are carried into feet when the field loses focus.
+- **Modules** (tabs in the top bar):
+  - **Earthwork**: PDF plan + zone list. Cut zones have a *Soil type* (drives the zone's *Swell %*, editable);
+    fill zones have a *Fill material* (drives *Compaction shrink %*, editable). Per zone: Bank volume, Loose volume,
+    Compacted volume and Material needed. Truck trips use loose volumes.
+  - **Concrete**: sidewalks, columns (rectangular or round), slabs/floors, footings, beams, walls. Quantity,
+    dimensions, waste % (default 5 %) and notes. Shows net volume and **Order volume (incl. waste)**.
+  - **Asphalt**: road, parking lot, sidewalk topping, driveway, patch/other. Area, net volume, order volume and
+    tonnage using an editable compacted density (default 2.35 t/m³ ≈ 146.7 lb/ft³, hot-mix asphalt).
+- Mouse wheel = zoom at the pointer; drag = pan the plan. **Load PDF** opens your own plan
+  (`/sample-plan.pdf` is loaded by default).
 
 ## Stack
 
-| Área | Herramienta |
+| Area | Tool |
 | --- | --- |
 | UI | React 19 + TypeScript + Vite |
-| Estilos | Tailwind CSS v4 (`@tailwindcss/vite`) |
-| Estado | Zustand |
-| Render de PDF | pdfjs-dist (pdf.js) |
-| Lienzo interactivo | Konva + react-konva |
-| Geometría | @turf/turf |
-| Exportar a Excel | xlsx (SheetJS, instalado desde el CDN oficial `cdn.sheetjs.com`) |
-| Generar/editar PDF | pdf-lib |
+| Styles | Tailwind CSS v4 (`@tailwindcss/vite`) |
+| State | Zustand |
+| PDF rendering | pdfjs-dist (pdf.js) |
+| Interactive canvas | Konva + react-konva |
+| Geometry | @turf/turf |
+| Excel export | xlsx (SheetJS, from the official CDN `cdn.sheetjs.com`) |
+| PDF generation | pdf-lib |
 
-## Estructura de carpetas
+## Folder structure
 
 ```
-excavation-app/
-├── public/
-│   ├── favicon.svg
-│   └── sample-plan.pdf          # plano de prueba 1:500 (generado con pdf-lib)
-├── scripts/
-│   └── make-sample-pdf.mjs      # genera public/sample-plan.pdf
-├── src/
-│   ├── components/
-│   │   ├── Canvas.tsx           # Stage de Konva: capa PDF + capa de zonas; zoom con rueda y paneo
-│   │   ├── Toolbar.tsx          # Cargar PDF, Calibrar escala, Dibujar zona, Zoom +/-
-│   │   ├── ZoneList.tsx         # lista de zonas y totales
-│   │   └── ScaleCalibration.tsx # panel de calibración (stub)
-│   ├── lib/
-│   │   ├── geometry.ts          # área por shoelace, conversión unidades PDF → metros
-│   │   ├── volumes.ts           # volumen por zona y totales (corte, relleno, neto)
-│   │   └── factors.ts           # abundamiento, contracción, viajes de camión
-│   ├── store/
-│   │   └── projectStore.ts      # estado global (Zustand)
-│   ├── types/
-│   │   └── index.ts             # Point, Zone, Factors, ProjectState…
-│   ├── App.tsx                  # diseño: barra superior, lienzo, panel lateral
-│   ├── index.css                # Tailwind
-│   └── main.tsx
-├── index.html
-├── package.json
-├── tsconfig*.json
-└── vite.config.ts
+src/
+├── components/
+│   ├── Canvas.tsx            # Konva stage: PDF layer + zones layer; wheel zoom and pan
+│   ├── Toolbar.tsx           # module tabs, Load PDF, Calibrate, Draw zone, zoom, Meters|Feet, EN|ES
+│   ├── ZoneList.tsx          # zones (soil / fill material, swell, shrink, volumes) and totals
+│   ├── ScaleCalibration.tsx  # calibration panel (stub)
+│   ├── DistanceInput.tsx     # distance input: meters field or ft + in fields
+│   └── modules/              # ConcretePanel, AsphaltPanel and shared ElementFields
+├── i18n/                     # en.ts (keys), es.ts (same keys, type-checked), index.ts (t), useT.ts (hook)
+├── lib/
+│   ├── units.ts              # unit conversion and formatting (ft-in, ft², yd³, short tons…)
+│   ├── soils.ts              # soil types (swell) and fill materials (shrink) with documented ranges
+│   ├── geometry.ts           # shoelace area, PDF units → meters
+│   ├── volumes.ts            # zone volumes (bank / compacted / material needed / loose) and totals
+│   ├── factors.ts            # swell, shrink, truck trips
+│   ├── concrete.ts           # concrete volumes
+│   └── asphalt.ts            # asphalt area, volume and tonnage
+├── store/projectStore.ts     # global state (Zustand)
+└── types/index.ts
 ```
 
-## Conceptos clave
+## Key concepts
 
-- **Unidades PDF**: el lienzo trabaja en unidades PDF (1 u = 1/72 de pulgada en papel). Los polígonos se guardan en
-  estas unidades, independientes del zoom.
-- **Escala** (`metersPerPdfUnit`): metros reales por unidad PDF. Un plano 1:500 impreso a tamaño real equivale a
-  `500 × 0.0254 / 72 ≈ 0.1764 m/u`. Las áreas se convierten con la escala al cuadrado.
-- **Volumen** de una zona = área (m²) × profundidad promedio (m).
-- **Factores**: volumen suelto = banco × (1 + abundamiento); material para relleno = compactado / (1 − contracción);
-  viajes = ⌈suelto / capacidad del camión⌉.
+- **PDF units**: the canvas works in PDF units (1 u = 1/72 inch on paper), independent of zoom.
+- **Scale** (`metersPerPdfUnit`): real meters per PDF unit. A 1:500 plan printed at full size equals
+  `500 × 0.0254 / 72 ≈ 0.1764 m/u`.
+- **Zone volume** = area (m²) × average depth (m).
+- **Factors**: loose = bank × (1 + swell); material needed = compacted / (1 − shrink);
+  trips = ⌈loose / truck capacity⌉. Swell/shrink come from the zone's manual value, else its soil type / fill
+  material (midpoint of a documented typical range, see `src/lib/soils.ts`), else the project default
+  (25 % swell, 10 % shrink).
 
-## Requisitos
+## Requirements
 
-- Node.js **20.19+** (o 22.12+) y npm.
-- Navegador moderno (Chrome, Edge, Firefox o Safari recientes).
+- Node.js **20.19+** (or 22.12+) and npm.
 
-## Comandos
+## Commands
 
 ```bash
-npm install          # instalar dependencias
-npm run dev          # servidor de desarrollo (http://localhost:5173)
-npm run build        # verificación de tipos + compilación de producción en dist/
-npm run preview      # servir la compilación de producción
-npm run sample-pdf   # regenerar public/sample-plan.pdf
+npm install          # install dependencies
+npm run dev          # dev server (http://localhost:5173)
+npm run build        # type check + production build into dist/
+npm run lint         # oxlint
+npm test             # quick checks of the pure modules (units, soils, volumes, concrete, asphalt, i18n)
+npm run preview      # serve the production build
+npm run sample-pdf   # regenerate public/sample-plan.pdf
 ```
 
-Al abrir la app se carga por defecto `/sample-plan.pdf`. Usa **Cargar PDF** para abrir un plano propio.
-Rueda del ratón = zoom sobre el puntero; arrastrar = desplazar el plano.
+## Next steps
 
-## Próximos pasos (fases)
-
-1. **Fase 1 – Calibración de escala**: trazar una línea sobre una distancia conocida (p. ej. la barra de 20 m),
-   capturar la distancia real y calcular `metersPerPdfUnit`. Opción de escala 1:N directa.
-2. **Fase 2 – Dibujo de zonas**: dibujar polígonos con clics en la capa superior, cerrar con doble clic,
-   editar vértices, validar auto-intersecciones (Turf), colores por tipo (corte/relleno).
-3. **Fase 3 – Propiedades y cálculo**: editar nombre, tipo y profundidad por zona; editar factores; soporte para
-   varias páginas y descuento de huecos.
-4. **Fase 4 – Exportación**: reporte en Excel (SheetJS) y PDF anotado con las zonas y la tabla de volúmenes (pdf-lib).
-5. **Fase 5 – Persistencia**: guardar/abrir proyectos (JSON / IndexedDB) y deshacer/rehacer.
-6. **Fase 6 – Métodos avanzados**: profundidad variable por vértices, secciones transversales, malla de cotas
-   (terreno natural vs. proyecto).
+1. Scale calibration on the canvas (two points over a known distance).
+2. Zone drawing (polygons, vertex editing, Turf self-intersection check).
+3. Editable project factors; multiple pages; holes.
+4. Export: Excel (SheetJS) and annotated PDF (pdf-lib) — zones, concrete and asphalt sheets, translated via `t()`.
+5. Project persistence (JSON / IndexedDB) and undo/redo.
