@@ -12,7 +12,7 @@ import ts from 'typescript';
 
 const raiz = join(fileURLToPath(import.meta.url), '..', '..');
 // Módulos puros a probar (rutas relativas a src/, sin extensión).
-const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index', 'lib/geometry'];
+const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index', 'lib/geometry', 'lib/canvasHint'];
 // El directorio temporal va dentro de node_modules para que las dependencias (p. ej. @turf/turf en
 // geometry.ts) se resuelvan desde los archivos transpilados; node_modules está en .gitignore.
 const dir = mkdtempSync(join(existsSync(join(raiz, 'node_modules')) ? join(raiz, 'node_modules') : tmpdir(), '.test-lib-'));
@@ -30,7 +30,7 @@ for (const m of modulos) {
   writeFileSync(join(dir, `${m}.mjs`), js);
 }
 const cargar = (m) => import(pathToFileURL(join(dir, `${m}.mjs`)).href);
-const [u, f, v, s, c, a, enMod, esMod, i18n, g] = await Promise.all(modulos.map(cargar));
+const [u, f, v, s, c, a, enMod, esMod, i18n, g, hint] = await Promise.all(modulos.map(cargar));
 rmSync(dir, { recursive: true, force: true });
 const tEn = i18n.crearTraductor('en');
 const tEs = i18n.crearTraductor('es');
@@ -336,6 +336,25 @@ igual(g.screenToPlan({ x: 370, y: 460 }, vista), { x: 100, y: 200 }, 'pantalla �
 // Centroide (posición de la etiqueta).
 igual(g.polygonCentroid(rect240x160), { x: 500, y: 380 }, 'centroide del rectángulo');
 igual(g.polygonCentroid([{ x: 0, y: 0 }, { x: 4, y: 0 }]), { x: 2, y: 0 }, 'centroide degenerado = promedio');
+
+// --- Aviso del lienzo según herramienta y estado del plano ---
+igual(hint.claveAyudaLienzo('navegar', 'listo', 0), null, 'Navegar: sin aviso');
+igual(hint.claveAyudaLienzo('calibrar', 'listo', 0), 'canvas.cal.step1', 'Calibrar: paso 1');
+igual(hint.claveAyudaLienzo('calibrar', 'listo', 1), 'canvas.cal.step2', 'Calibrar: paso 2');
+igual(hint.claveAyudaLienzo('calibrar', 'listo', 2), 'canvas.cal.step3', 'Calibrar: paso 3 (distancia)');
+igual(hint.claveAyudaLienzo('dibujar', 'listo', 0), 'canvas.hint.draw', 'Dibujar: instrucciones');
+for (const h of ['calibrar', 'dibujar']) {
+  igual(hint.claveAyudaLienzo(h, 'vacio', 0), 'canvas.needPdf', `${h} sin plano: pedir un PDF`);
+  igual(hint.claveAyudaLienzo(h, 'error', 0), 'canvas.needPdf', `${h} con error de PDF: pedir un PDF`);
+  igual(hint.claveAyudaLienzo(h, 'cargando', 0), 'canvas.loading', `${h} mientras carga`);
+}
+igual(hint.claveAyudaErrorPdf('Invalid PDF structure.'), 'canvas.errorHintFile', 'PDF inválido → otro archivo');
+igual(hint.claveAyudaErrorPdf('Setting up fake worker failed: "Failed to fetch dynamically imported module".'), 'canvas.errorHint', 'worker que no carga → reiniciar/actualizar');
+igual(hint.claveAyudaErrorPdf('n.toHex is not a function'), 'canvas.errorHint', 'navegador antiguo → reiniciar/actualizar');
+for (const k of ['canvas.errorHintFile', 'canvas.cal.step1', 'canvas.cal.step2', 'canvas.cal.step3', 'canvas.needPdf', 'canvas.errorHint']) {
+  assert.ok(k in enMod.en && k in esMod.es && esMod.es[k] !== enMod.en[k], `falta o sin traducir: ${k}`);
+  ok++;
+}
 
 // i18n
 igual(i18n.traducir('en', 'zones.heading', { count: 3 }), 'Zones (3)', 'interpolación en');

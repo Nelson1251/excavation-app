@@ -11,10 +11,12 @@ volumes, material needed, net balance and truck trips.
 
 ## Usage
 
-- **Calibrate the scale**: press **📏 Calibrate scale**, click two points on the plan over a known distance (e.g. the
-  scale bar; you can also press-drag from one point to the other), type the real distance in the **Scale** panel
-  (meters, or feet + inches with fractions) and press **Apply** (or Enter). The scale is stored as meters per PDF unit.
-  Loading a different PDF resets the scale (the default 1:500 only applies to the sample plan).
+- **Calibrate the scale**: press **📏 Calibrate scale** (the button turns orange, the plan gets a cyan frame and a
+  banner says what to do). Click the first point of a known distance (e.g. the scale bar), then the second point (or
+  press-drag from one to the other). A box appears on the plan: type the real distance (meters, or feet + inches with
+  fractions) and press **Apply** (or Enter). The scale is stored as meters per PDF unit. If no plan is shown, the
+  banner asks you to load a PDF first. Loading a different PDF resets the scale (the default 1:500 only applies to the
+  sample plan).
 - **Draw a zone**: press **✏️ Draw zone**, then either **drag** to draw a rectangle, or **click** to add polygon
   vertices and close it by clicking the first point, double-clicking or pressing **Enter**. **Backspace** removes the
   last point, **Esc** cancels (Esc again returns to Pan). The new zone is selected in the list to set its name,
@@ -58,6 +60,16 @@ volumes, material needed, net balance and truck trips.
 | Geometry | @turf/turf |
 | Excel export | xlsx (SheetJS, from the official CDN `cdn.sheetjs.com`) |
 | PDF generation | pdf-lib |
+
+## Troubleshooting
+
+- **"Error loading the PDF…" / the plan stays empty**: close every black window of the app, run `iniciar.bat` again and
+  reload with Ctrl+F5. `iniciar.bat` warns if port 5173 is already taken by an old copy of the app (you would otherwise
+  be looking at an old version). If it still fails, update Chrome/Edge.
+- The pdf.js worker is served from a fixed URL (`/pdf.worker.min.mjs`, plugin `pdfWorker` in `vite.config.ts`, emitted
+  into `dist/` by the build) and the app uses pdf.js's *legacy* build, which includes polyfills: the modern build calls
+  very recent JavaScript APIs (`Uint8Array.prototype.toHex`, `Map.prototype.getOrInsertComputed`, `Math.sumPrecise`…)
+  and fails on Chrome/Edge versions that are not fully up to date.
 
 ## Folder structure
 

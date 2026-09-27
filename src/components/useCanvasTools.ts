@@ -31,7 +31,7 @@ type Paneo = { pointerId: number; inicio: Point; vista: { x: number; y: number }
 
 type EventoPuntero = Konva.KonvaEventObject<PointerEvent>;
 
-export function useCanvasTools(stageRef: RefObject<Konva.Stage | null>) {
+export function useCanvasTools(stageRef: RefObject<Konva.Stage | null>, planListo: boolean) {
   const herramienta = useProjectStore((s) => s.herramienta);
 
   // Borrador: vértices del polígono en curso (unidades PDF), rectángulo en arrastre y cursor.
@@ -131,7 +131,8 @@ export function useCanvasTools(stageRef: RefObject<Konva.Stage | null>) {
       paneo.current = { pointerId: ev.pointerId, inicio: pos.pantalla, vista: { x, y } };
       return;
     }
-    if (herramienta === 'navegar' || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    // Sin página dibujada no se registran puntos (el lienzo muestra "Carga un PDF primero").
+    if (herramienta === 'navegar' || !planListo || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
     ev.preventDefault();
     try {
       // Seguir recibiendo move/up aunque el puntero salga del lienzo.

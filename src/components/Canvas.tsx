@@ -4,18 +4,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { Image as KonvaImage, Layer, Rect, Stage } from 'react-konva';
 import type Konva from 'konva';
-import * as pdfjsLib from 'pdfjs-dist';
-// Vite entrega la URL del worker empaquetado; pdf.js lo carga en un Web Worker.
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+// Versión "legacy" de pdf.js: trae polyfills para navegadores que no están al día (la moderna usa
+// APIs de JavaScript muy recientes y falla en Chrome/Edge sin actualizar).
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { useProjectStore } from '../store/projectStore';
 import { useT } from '../i18n/useT';
 import { polygonAreaM2, rectFromDrag } from '../lib/geometry';
 import { formatearArea } from '../lib/units';
 import type { PdfSource } from '../types';
+import { claveAyudaErrorPdf, claveAyudaLienzo, type EstadoPlano } from '../lib/canvasHint';
+import CalibrationPrompt from './CalibrationPrompt';
 import DrawingLayer from './DrawingLayer';
 import { useCanvasTools } from './useCanvasTools';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+// El worker se sirve desde una URL fija del mismo origen (plugin pdfWorker en vite.config.ts).
+pdfjsLib.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.min.mjs`;
 
 /** Resolución de rasterizado del PDF (píxeles por unidad PDF). Más alto = más nítido al hacer zoom. */
 const RENDER_SCALE = Math.min(3, 2 * (window.devicePixelRatio || 1));
@@ -49,8 +52,9 @@ export default function Canvas() {
   const metersPerPdfUnit = useProjectStore((s) => s.metersPerPdfUnit);
   const sistema = useProjectStore((s) => s.sistemaUnidades);
 
+  const puntosCalibracion = useProjectStore((s) => s.puntosCalibracion);
+
   const [resultado, setResultado] = useState<Resultado | null>(null);
-  const { puntos, rect, cursor, aviso, handlers, limpiarCursor } = useCanvasTools(stageRef);
 
   // Observar el tamaño del contenedor para dimensionar el Stage.
   useEffect(() => {
@@ -116,7 +120,10 @@ export default function Canvas() {
 
   // Estado derivado: el resultado solo es vigente si corresponde al origen y página actuales.
   const vigente = resultado !== null && resultado.fuente === pdfSource && resultado.pageIndex === pageIndex;
-  const estado = !pdfSource ? 'vacio' : !vigente ? 'cargando' : resultado.error ? 'error' : 'listo';
+  const estado: EstadoPlano = !pdfSource ? 'vacio' : !vigente ? 'cargando' : resultado.error ? 'error' : 'listo';
+  // Las herramientas solo registran clics cuando hay una página dibujada.
+  const { puntos, rect, cursor, aviso, handlers, limpiarCursor } = useCanvasTools(stageRef, estado === 'listo');
+  const claveAyuda = claveAyudaLienzo(herramienta, estado, puntosCalibracion.length);
   // Mientras carga un PDF nuevo se sigue mostrando el anterior.
   const imagen = resultado?.imagen ?? null;
   const pagina = resultado?.pagina ?? { ancho: 0, alto: 0 };
@@ -209,33 +216,55 @@ export default function Canvas() {
             {estado === 'vacio' && t('canvas.empty')}
             {estado === 'cargando' && t('canvas.loading')}
             {estado === 'error' && (
-              <span className="text-red-300">{t('canvas.error', { message: resultado?.error ?? '' })}</span>
+              <span className="block max-w-xl text-red-300">
+                {t('canvas.error', { message: resultado?.error ?? '' })}
+                <span className="mt-1 block text-xs text-slate-300">{t(claveAyudaErrorPdf(resultado?.error ?? ''))}</span>
+              </span>
             )}
           </div>
         </div>
       )}
 
-      {/* Instrucciones de la herramienta activa */}
-      {herramienta !== 'navegar' && estado === 'listo' && (
+      {/* Marco de color mientras una herramienta está activa (cian = calibrar, ámbar = dibujar). */}
+      {herramienta !== 'navegar' && (
         <div
-          className="pointer-events-none absolute left-1/2 top-2 flex max-w-[90%] -translate-x-1/2 flex-col items-center gap-1 text-center text-xs"
+          className={`pointer-events-none absolute inset-0 border-4 ${
+            herramienta === 'calibrar' ? 'border-cyan-400/80' : 'border-amber-400/80'
+          }`}
+        />
+      )}
+
+      {/* Instrucciones de la herramienta activa (siempre visibles, también sin plano). */}
+      {claveAyuda && (
+        <div
+          className="pointer-events-none absolute left-1/2 top-3 flex max-w-[92%] -translate-x-1/2 flex-col items-center gap-1.5 text-center"
           data-testid="canvas-hint"
         >
-          <div className="rounded-md bg-slate-800/95 px-3 py-1.5 text-slate-100 shadow">
-            {t(herramienta === 'dibujar' ? 'canvas.hint.draw' : 'canvas.hint.calibrate')}
+          <div
+            role="status"
+            className={`rounded-md px-4 py-2 text-sm font-semibold shadow-lg ${
+              claveAyuda === 'canvas.needPdf'
+                ? 'bg-red-600 text-white'
+                : herramienta === 'calibrar'
+                  ? 'bg-cyan-400 text-slate-950'
+                  : 'bg-amber-400 text-slate-950'
+            }`}
+          >
+            {t(claveAyuda)}
           </div>
-          {herramienta === 'dibujar' && !metersPerPdfUnit && (
-            <div role="status" className="rounded-md bg-amber-500/95 px-3 py-1.5 font-medium text-slate-950 shadow">
+          {herramienta === 'calibrar' && estado === 'listo' && puntosCalibracion.length === 2 && <CalibrationPrompt />}
+          {herramienta === 'dibujar' && estado === 'listo' && !metersPerPdfUnit && (
+            <div role="status" className="rounded-md bg-slate-800/95 px-3 py-1.5 text-xs font-medium text-amber-300 shadow">
               {t('canvas.warn.noScale')}
             </div>
           )}
           {aviso && (
-            <div role="alert" className="rounded-md bg-red-600/95 px-3 py-1.5 font-medium text-white shadow">
+            <div role="alert" className="rounded-md bg-red-600/95 px-3 py-1.5 text-xs font-medium text-white shadow">
               {t(aviso)}
             </div>
           )}
           {areaBorrador && (
-            <div className="rounded-md bg-slate-900/90 px-2 py-1 tabular-nums text-amber-300 shadow">
+            <div className="rounded-md bg-slate-900/90 px-2 py-1 text-xs tabular-nums text-amber-300 shadow">
               {t('canvas.draftArea', { area: areaBorrador })}
             </div>
           )}
