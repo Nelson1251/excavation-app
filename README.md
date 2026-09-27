@@ -17,6 +17,11 @@ volumes, material needed, net balance and truck trips.
   fractions) and press **Apply** (or Enter). The scale is stored as meters per PDF unit. If no plan is shown, the
   banner asks you to load a PDF first. Loading a different PDF resets the scale (the default 1:500 only applies to the
   sample plan).
+- **Multi-page PDFs**: use **◀ / ▶**, the “Page 1 of 3” selector next to the PDF name, or **PageUp / PageDown**
+  (when the cursor is not in a text field). Each sheet has its **own scale** (calibrate every sheet you draw on) and its
+  own zones: the plan only shows the zones of the visible sheet, the zone list groups them by sheet (“Sheet 2”) and the
+  totals add up all sheets. Switching sheets cancels an unfinished drawing/calibration and fits the new sheet to the
+  view. `node scripts/make-multipage-pdf.mjs out.pdf` creates a 3-sheet test PDF (1:500, 1:200, 1:1000).
 - **Draw a zone**: press **✏️ Draw zone**, then either **drag** to draw a rectangle, or **click** to add polygon
   vertices and close it by clicking the first point, double-clicking or pressing **Enter**. **Backspace** removes the
   last point, **Esc** cancels (Esc again returns to Pan). The new zone is selected in the list to set its name,
@@ -90,6 +95,8 @@ src/
 │   ├── soils.ts              # soil types (swell) and fill materials (shrink) with documented ranges
 │   ├── geometry.ts           # shoelace area, scale, drag → rectangle, screen ↔ plan, centroid
 │   ├── zones.ts              # zone display name helpers
+│   ├── pages.ts              # page clamping, per-page scale and zones
+│   ├── canvasHint.ts         # which instruction banner / PDF error hint to show
 │   ├── volumes.ts            # zone volumes (bank / compacted / material needed / loose) and totals
 │   ├── factors.ts            # swell, shrink, truck trips
 │   ├── concrete.ts           # concrete volumes

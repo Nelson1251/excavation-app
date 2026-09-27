@@ -33,6 +33,7 @@ type EventoPuntero = Konva.KonvaEventObject<PointerEvent>;
 
 export function useCanvasTools(stageRef: RefObject<Konva.Stage | null>, planListo: boolean) {
   const herramienta = useProjectStore((s) => s.herramienta);
+  const pageIndex = useProjectStore((s) => s.pageIndex);
 
   // Borrador: vértices del polígono en curso (unidades PDF), rectángulo en arrastre y cursor.
   // Los refs reflejan el estado de forma síncrona para eventos muy seguidos (doble clic).
@@ -50,10 +51,11 @@ export function useCanvasTools(stageRef: RefObject<Konva.Stage | null>, planList
     setPuntosEstado(p);
   };
 
-  // Al cambiar de herramienta se descarta el borrador (patrón "ajustar estado al renderizar").
-  const [herramientaPrevia, setHerramientaPrevia] = useState(herramienta);
-  if (herramienta !== herramientaPrevia) {
-    setHerramientaPrevia(herramienta);
+  // Al cambiar de herramienta o de página se descarta el borrador (patrón "ajustar estado al renderizar").
+  const clave = `${herramienta}:${pageIndex}`;
+  const [clavePrevia, setClavePrevia] = useState(clave);
+  if (clave !== clavePrevia) {
+    setClavePrevia(clave);
     setPuntosEstado([]);
     setRect(null);
     setAviso(null);
@@ -62,7 +64,7 @@ export function useCanvasTools(stageRef: RefObject<Konva.Stage | null>, planList
     puntosRef.current = [];
     presion.current = null;
     ultimoClic.current = null;
-  }, [herramienta]);
+  }, [clave]);
 
   const posicion = (): Posicion | null => {
     const stage = stageRef.current;
@@ -81,10 +83,10 @@ export function useCanvasTools(stageRef: RefObject<Konva.Stage | null>, planList
       setAviso('canvas.err.selfIntersect');
       return false;
     }
-    const { addZone, setZonaSeleccionada, sistemaUnidades } = useProjectStore.getState();
+    const { addZone, setZonaSeleccionada, sistemaUnidades, pageIndex: pagina } = useProjectStore.getState();
     // Profundidad inicial redonda en el sistema actual (1 m o 3 ft); el usuario la ajusta en la lista.
     const profundidad = sistemaUnidades === 'imperial' ? piesAMetros(3) : 1;
-    const id = addZone({ nombre: '', tipo: 'corte', puntos: pts, profundidad });
+    const id = addZone({ nombre: '', tipo: 'corte', pageIndex: pagina, puntos: pts, profundidad });
     setZonaSeleccionada(id);
     setAviso(null);
     return true;

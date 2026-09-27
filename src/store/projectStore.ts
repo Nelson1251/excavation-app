@@ -1,6 +1,7 @@
 // Estado global del proyecto con Zustand.
 import { create } from 'zustand';
 import { metersPerPdfUnitFromRatio } from '../lib/geometry';
+import { limitarPagina } from '../lib/pages';
 import { SISTEMA_POR_DEFECTO } from '../lib/units';
 import { IDIOMA_POR_DEFECTO, esIdioma } from '../i18n';
 import { DENSIDAD_ASFALTO_POR_DEFECTO } from '../lib/asphalt';
@@ -27,9 +28,13 @@ const limitarZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
 interface ProjectActions {
   setPdfSource: (source: PdfSource) => void;
+  /**
+   * Cambia de página (limitada a 0…numPaginas−1): carga la escala de esa página, cancela la
+   * calibración en curso y deselecciona una zona de otra página.
+   */
   setPageIndex: (index: number) => void;
   setNumPaginas: (n: number) => void;
-  /** Fija la escala (metros por unidad PDF) y su origen; null = sin calibrar. */
+  /** Fija la escala (metros por unidad PDF) de la página actual y su origen; null = sin calibrar. */
   setScale: (metersPerPdfUnit: number | null, origen?: OrigenEscala | null) => void;
   /** Puntos de la línea de calibración (0, 1 o 2) en unidades PDF. */
   setPuntosCalibracion: (puntos: Point[]) => void;
@@ -73,6 +78,7 @@ const zonasEjemplo: Zone[] = [
     nombre: '', // el nombre visible sale de nombreClave (traducido al mostrar)
     nombreClave: 'zone.sample.buildingPad',
     tipo: 'corte',
+    pageIndex: 0,
     puntos: [
       { x: 380, y: 300 },
       { x: 620, y: 300 },
@@ -86,6 +92,7 @@ const zonasEjemplo: Zone[] = [
     nombre: '',
     nombreClave: 'zone.sample.parking',
     tipo: 'relleno',
+    pageIndex: 0,
     puntos: [
       { x: 650, y: 480 },
       { x: 820, y: 480 },
@@ -144,6 +151,7 @@ export const useProjectStore = create<ProjectStore>()((set, get) => ({
   pageIndex: 0,
   numPaginas: 0,
   // Escala por defecto 1:500 (la del plano de prueba). Se reemplazará con la calibración.
+  escalas: { 0: { metersPerPdfUnit: metersPerPdfUnitFromRatio(500), origen: { tipo: 'ejemplo' } } },
   metersPerPdfUnit: metersPerPdfUnitFromRatio(500),
   origenEscala: { tipo: 'ejemplo' },
   puntosCalibracion: [],
@@ -175,6 +183,7 @@ export const useProjectStore = create<ProjectStore>()((set, get) => ({
         pdfSource: source,
         pageIndex: 0,
         numPaginas: 0,
+        escalas: {},
         metersPerPdfUnit: null,
         origenEscala: null,
         puntosCalibracion: [],
@@ -182,10 +191,34 @@ export const useProjectStore = create<ProjectStore>()((set, get) => ({
         zonaSeleccionada: zones.some((z) => z.id === s.zonaSeleccionada) ? s.zonaSeleccionada : null,
       };
     }),
-  setPageIndex: (index) => set({ pageIndex: Math.max(0, index) }),
-  setNumPaginas: (n) => set({ numPaginas: n }),
+  setPageIndex: (index) =>
+    set((s) => {
+      const pageIndex = limitarPagina(index, s.numPaginas);
+      if (pageIndex === s.pageIndex) return {};
+      const escala = s.escalas[pageIndex];
+      const sel = s.zones.find((z) => z.id === s.zonaSeleccionada);
+      return {
+        pageIndex,
+        metersPerPdfUnit: escala?.metersPerPdfUnit ?? null,
+        origenEscala: escala?.origen ?? null,
+        puntosCalibracion: [],
+        zonaSeleccionada: sel && sel.pageIndex === pageIndex ? s.zonaSeleccionada : null,
+      };
+    }),
+  setNumPaginas: (numPaginas) =>
+    set((s) => {
+      const pageIndex = limitarPagina(s.pageIndex, numPaginas);
+      if (pageIndex === s.pageIndex) return { numPaginas };
+      const escala = s.escalas[pageIndex];
+      return { numPaginas, pageIndex, metersPerPdfUnit: escala?.metersPerPdfUnit ?? null, origenEscala: escala?.origen ?? null };
+    }),
   setScale: (metersPerPdfUnit, origen = null) =>
-    set({ metersPerPdfUnit, origenEscala: metersPerPdfUnit ? origen : null }),
+    set((s) => {
+      const escalas = { ...s.escalas };
+      if (metersPerPdfUnit && origen) escalas[s.pageIndex] = { metersPerPdfUnit, origen };
+      else delete escalas[s.pageIndex];
+      return { escalas, metersPerPdfUnit: escalas[s.pageIndex]?.metersPerPdfUnit ?? null, origenEscala: escalas[s.pageIndex]?.origen ?? null };
+    }),
   setPuntosCalibracion: (puntosCalibracion) => set({ puntosCalibracion: puntosCalibracion.slice(0, 2) }),
   addZone: (zone) => {
     const id = nuevoId();

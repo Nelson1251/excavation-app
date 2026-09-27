@@ -1,5 +1,5 @@
 // Barra de herramientas superior.
-import { useRef, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useT } from '../i18n/useT';
 import { IDIOMAS, type Clave } from '../i18n';
@@ -93,6 +93,25 @@ export default function Toolbar() {
   const setSistema = useProjectStore((s) => s.setSistemaUnidades);
   const setIdioma = useProjectStore((s) => s.setLanguage);
   const zoomPor = useProjectStore((s) => s.zoomPor);
+  const pageIndex = useProjectStore((s) => s.pageIndex);
+  const numPaginas = useProjectStore((s) => s.numPaginas);
+  const setPageIndex = useProjectStore((s) => s.setPageIndex);
+  const variasPaginas = modulo === 'excavacion' && numPaginas > 1;
+
+  // RePág / AvPág cambian de página cuando el foco no está en un campo de texto.
+  useEffect(() => {
+    if (!variasPaginas) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'PageUp' && e.key !== 'PageDown') return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      e.preventDefault();
+      const s = useProjectStore.getState();
+      s.setPageIndex(s.pageIndex + (e.key === 'PageDown' ? 1 : -1));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [variasPaginas]);
 
   // Cargar un PDF local del usuario mediante un object URL.
   const onArchivo = (e: ChangeEvent<HTMLInputElement>) => {
@@ -178,6 +197,43 @@ export default function Toolbar() {
       />
 
       <div className="ml-auto flex min-w-0 items-center gap-3">
+        {/* Navegación de páginas (solo PDFs de varias páginas). */}
+        {variasPaginas && (
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label={t('page.select')}>
+            <button
+              type="button"
+              onClick={() => setPageIndex(pageIndex - 1)}
+              disabled={pageIndex <= 0}
+              title={t('page.prev')}
+              aria-label={t('page.prev')}
+              className="rounded-md bg-slate-800 px-2 py-1 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ◀
+            </button>
+            <select
+              value={pageIndex}
+              onChange={(e) => setPageIndex(Number(e.target.value))}
+              aria-label={t('page.select')}
+              className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none focus:border-amber-500"
+            >
+              {Array.from({ length: numPaginas }, (_, i) => (
+                <option key={i} value={i}>
+                  {t('page.label', { n: i + 1, total: numPaginas })}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setPageIndex(pageIndex + 1)}
+              disabled={pageIndex >= numPaginas - 1}
+              title={t('page.next')}
+              aria-label={t('page.next')}
+              className="rounded-md bg-slate-800 px-2 py-1 text-sm text-slate-200 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ▶
+            </button>
+          </div>
+        )}
         {modulo === 'excavacion' && (
           <span className="truncate text-sm text-slate-400" title={pdfSource?.nombre}>
             {pdfSource ? pdfSource.nombre : t('toolbar.noPlan')}

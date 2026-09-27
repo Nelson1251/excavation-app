@@ -17,6 +17,8 @@ export default function ScaleCalibration() {
   const sistema = useProjectStore((s) => s.sistemaUnidades);
   const puntos = useProjectStore((s) => s.puntosCalibracion);
   const setHerramienta = useProjectStore((s) => s.setHerramienta);
+  const pageIndex = useProjectStore((s) => s.pageIndex);
+  const numPaginas = useProjectStore((s) => s.numPaginas);
 
   const calibrando = herramienta === 'calibrar';
   const longitudPdf = puntos.length === 2 ? distance(puntos[0], puntos[1]) : null;
@@ -60,7 +62,7 @@ export default function ScaleCalibration() {
   return (
     <section className="rounded-lg border border-slate-800 bg-slate-900 p-3" aria-labelledby="scale-heading">
       <h2 id="scale-heading" className="mb-2 text-sm font-semibold text-slate-200">
-        {t('scale.heading')}
+        {numPaginas > 1 ? t('scale.headingSheet', { n: pageIndex + 1 }) : t('scale.heading')}
       </h2>
       <p className={`text-xs ${metersPerPdfUnit ? 'text-slate-300' : 'font-medium text-amber-400'}`} data-testid="scale-value">
         {textoEscala}

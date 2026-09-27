@@ -1,11 +1,12 @@
 // Lista de zonas con área, profundidad, tipo de suelo (corte) o material de relleno (relleno),
 // abundamiento, contracción y volúmenes (en banco / compactado, material necesario y suelto),
 // más totales preliminares. Todo se calcula en m / m² / m³ y solo se convierte al mostrar.
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useT } from '../i18n/useT';
 import type { Clave, Traductor } from '../i18n';
 import { polygonAreaM2 } from '../lib/geometry';
+import { escalaDePagina, paginasConZonas } from '../lib/pages';
 import { totals, zoneVolume, zoneVolumes } from '../lib/volumes';
 import { truckTrips } from '../lib/factors';
 import { formatearArea, formatearLongitud, formatearNumero as fmt, formatearVolumen, leerNumero } from '../lib/units';
@@ -141,7 +142,10 @@ const claseEtiquetaCampo = 'mb-1 block text-[10px] uppercase text-slate-400';
 export default function ZoneList() {
   const t = useT();
   const zones = useProjectStore((s) => s.zones);
-  const metersPerPdfUnit = useProjectStore((s) => s.metersPerPdfUnit);
+  const escalas = useProjectStore((s) => s.escalas);
+  const pageIndex = useProjectStore((s) => s.pageIndex);
+  const numPaginas = useProjectStore((s) => s.numPaginas);
+  const setPageIndex = useProjectStore((s) => s.setPageIndex);
   const factors = useProjectStore((s) => s.factors);
   const removeZone = useProjectStore((s) => s.removeZone);
   const updateZone = useProjectStore((s) => s.updateZone);
@@ -159,8 +163,10 @@ export default function ZoneList() {
       ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [seleccionada]);
 
-  const filas = zones.map((z) => {
-    const area = metersPerPdfUnit ? polygonAreaM2(z.puntos, metersPerPdfUnit) : null;
+  const filas = zones.map((z, indice) => {
+    // Cada zona usa la escala de su propia página (hoja).
+    const escala = escalaDePagina(escalas, z.pageIndex);
+    const area = escala ? polygonAreaM2(z.puntos, escala) : null;
     // Abundamiento: manual → tipo de suelo (solo corte) → proyecto.
     const soilType = z.tipo === 'corte' ? z.soilType : undefined;
     const abund = abundamientoDeZona({ soilType, abundamientoManual: z.abundamientoManual }, factors.abundamiento);
@@ -170,8 +176,12 @@ export default function ZoneList() {
     const contrPorDefecto = contraccionDeZona({ fillMaterial: z.fillMaterial }, factors.contraccion);
     const volumenes =
       area !== null ? zoneVolumes(z.tipo, zoneVolume(area, z.profundidad), abund.valor, contr.valor) : null;
-    return { zona: z, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes };
+    return { zona: z, indice, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes };
   });
+  // Con varias hojas la lista se agrupa por hoja ("Sheet 2"); los totales suman todas las hojas.
+  const variasHojas = numPaginas > 1 || paginasConZonas(zones).some((p) => p > 0);
+  const filasOrdenadas = variasHojas ? [...filas].sort((a, b) => a.zona.pageIndex - b.zona.pageIndex) : filas;
+  const hayZonasSinEscala = filas.some((f) => f.area === null);
 
   // Totales geométricos (corte en banco / relleno compactado) y de acarreo (volúmenes sueltos por zona).
   const tot = totals(filas.map((f) => ({ tipo: f.zona.tipo, volumen: f.volumenes?.geometrico ?? 0 })));
@@ -188,7 +198,7 @@ export default function ZoneList() {
     <section className="flex flex-col gap-3">
       <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
         <h2 className="mb-2 text-sm font-semibold text-slate-200">{t('zones.heading', { count: zones.length })}</h2>
-        {!metersPerPdfUnit && filas.length > 0 && (
+        {hayZonasSinEscala && (
           <p role="status" className="mb-2 rounded-md bg-amber-500/15 px-2 py-1 text-xs text-amber-300">
             {t('zones.needsScale')}
           </p>
@@ -197,17 +207,37 @@ export default function ZoneList() {
           <p className="text-xs text-slate-500">{t('zones.empty')}</p>
         ) : (
           <ul ref={listaRef} className="flex flex-col gap-2">
-            {filas.map(({ zona: z, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes }, indice) => {
+            {filasOrdenadas.map(({ zona: z, indice, area, abund, abundPorDefecto, contr, contrPorDefecto, volumenes }, pos) => {
+              const nuevaHoja = variasHojas && (pos === 0 || filasOrdenadas[pos - 1].zona.pageIndex !== z.pageIndex);
               const esRelleno = z.tipo === 'relleno';
               const etiquetaProfundidad = t(esRelleno ? 'zone.thickness' : 'zone.depth');
               const claveTipo: Clave = `zoneType.${z.tipo}`;
               return (
+                <Fragment key={z.id}>
+                {nuevaHoja && (
+                  <li
+                    role="presentation"
+                    data-sheet={z.pageIndex + 1}
+                    className={`mt-1 text-[11px] font-semibold uppercase tracking-wide ${
+                      z.pageIndex === pageIndex ? 'text-sky-300' : 'text-slate-500'
+                    }`}
+                  >
+                    {t('zones.sheet', { n: z.pageIndex + 1 })}
+                    {z.pageIndex === pageIndex && ` · ${t('zones.sheetCurrent')}`}
+                  </li>
+                )}
                 <li
-                  key={z.id}
                   data-zone-id={z.id}
+                  data-zone-sheet={z.pageIndex + 1}
                   aria-current={z.id === seleccionada ? 'true' : undefined}
-                  onClick={() => setSeleccionada(z.id)}
-                  onFocusCapture={() => setSeleccionada(z.id)}
+                  onClick={() => {
+                    // Seleccionar una zona de otra hoja lleva a esa hoja.
+                    if (z.pageIndex !== pageIndex) setPageIndex(z.pageIndex);
+                    setSeleccionada(z.id);
+                  }}
+                  onFocusCapture={() => {
+                    if (z.pageIndex === pageIndex) setSeleccionada(z.id);
+                  }}
                   className={`rounded-md border p-2 text-xs transition-colors ${
                     z.id === seleccionada
                       ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/60'
@@ -433,6 +463,7 @@ export default function ZoneList() {
                     </div>
                   )}
                 </li>
+                </Fragment>
               );
             })}
           </ul>

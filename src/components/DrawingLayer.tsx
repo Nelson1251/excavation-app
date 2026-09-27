@@ -79,6 +79,7 @@ export default function DrawingLayer({ puntos, rect, cursor }: Props) {
   const herramienta = useProjectStore((s) => s.herramienta);
   const vista = useProjectStore((s) => s.vista);
   const calibracion = useProjectStore((s) => s.puntosCalibracion);
+  const pagina = useProjectStore((s) => s.pageIndex);
   const k = 1 / vista.zoom; // px de pantalla → unidades PDF
   const navegando = herramienta === 'navegar';
 
@@ -101,6 +102,7 @@ export default function DrawingLayer({ puntos, rect, cursor }: Props) {
       {/* Zonas: se ordena la seleccionada al final para que quede encima. */}
       {zones
         .map((z, i) => ({ z, i }))
+        .filter(({ z }) => z.pageIndex === pagina) // solo las zonas de la página visible
         .sort((a, b) => Number(a.z.id === seleccionada) - Number(b.z.id === seleccionada))
         .map(({ z, i }) => {
           const sel = z.id === seleccionada;

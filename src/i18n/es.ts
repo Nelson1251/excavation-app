@@ -20,6 +20,10 @@ export const es = {
   'toolbar.zoomOut': 'Alejar',
   'toolbar.zoomIn': 'Acercar',
   'toolbar.noPlan': 'Sin plano cargado',
+  'page.label': 'Página {n} de {total}',
+  'page.select': 'Página',
+  'page.prev': 'Página anterior (RePág)',
+  'page.next': 'Página siguiente (AvPág)',
   'common.unspecified': 'Sin especificar',
 
   'units.label': 'Unidades:',
@@ -55,6 +59,7 @@ export const es = {
 
   // --- Escala / calibración ---
   'scale.heading': 'Escala',
+  'scale.headingSheet': 'Escala · Hoja {n}',
   'scale.uncalibrated': 'Escala sin calibrar',
   'scale.metric': '{value} m por unidad PDF (≈ 1:{ratio})',
   'scale.imperial': '{value} ft por unidad PDF · 1" de papel = {paper} (≈ 1:{ratio})',
@@ -99,6 +104,8 @@ export const es = {
   'zones.heading': 'Zonas ({count})',
   'zones.empty': 'No hay zonas. Usa “Dibujar zona” para agregar una.',
   'zones.delete': 'Eliminar zona',
+  'zones.sheet': 'Hoja {n}',
+  'zones.sheetCurrent': 'visible',
   'zones.needsScale': 'Las áreas y volúmenes necesitan una escala calibrada. Usa “Calibrar escala”.',
   'zone.areaNeedsScale': 'Área: calibra la escala',
   'zone.name': 'Nombre',

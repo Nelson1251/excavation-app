@@ -12,7 +12,7 @@ import ts from 'typescript';
 
 const raiz = join(fileURLToPath(import.meta.url), '..', '..');
 // Módulos puros a probar (rutas relativas a src/, sin extensión).
-const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index', 'lib/geometry', 'lib/canvasHint'];
+const modulos = ['lib/units', 'lib/factors', 'lib/volumes', 'lib/soils', 'lib/concrete', 'lib/asphalt', 'i18n/en', 'i18n/es', 'i18n/index', 'lib/geometry', 'lib/canvasHint', 'lib/pages', 'store/projectStore'];
 // El directorio temporal va dentro de node_modules para que las dependencias (p. ej. @turf/turf en
 // geometry.ts) se resuelvan desde los archivos transpilados; node_modules está en .gitignore.
 const dir = mkdtempSync(join(existsSync(join(raiz, 'node_modules')) ? join(raiz, 'node_modules') : tmpdir(), '.test-lib-'));
@@ -30,7 +30,7 @@ for (const m of modulos) {
   writeFileSync(join(dir, `${m}.mjs`), js);
 }
 const cargar = (m) => import(pathToFileURL(join(dir, `${m}.mjs`)).href);
-const [u, f, v, s, c, a, enMod, esMod, i18n, g, hint] = await Promise.all(modulos.map(cargar));
+const [u, f, v, s, c, a, enMod, esMod, i18n, g, hint, pg, storeMod] = await Promise.all(modulos.map(cargar));
 rmSync(dir, { recursive: true, force: true });
 const tEn = i18n.crearTraductor('en');
 const tEs = i18n.crearTraductor('es');
@@ -354,6 +354,51 @@ igual(hint.claveAyudaErrorPdf('n.toHex is not a function'), 'canvas.errorHint', 
 for (const k of ['canvas.errorHintFile', 'canvas.cal.step1', 'canvas.cal.step2', 'canvas.cal.step3', 'canvas.needPdf', 'canvas.errorHint']) {
   assert.ok(k in enMod.en && k in esMod.es && esMod.es[k] !== enMod.en[k], `falta o sin traducir: ${k}`);
   ok++;
+}
+
+// --- Páginas: límites, escala por página y zonas por página ---
+igual(pg.limitarPagina(5, 3), 2, 'página limitada al final');
+igual(pg.limitarPagina(-1, 3), 0, 'página limitada al inicio');
+igual(pg.limitarPagina(1, 3), 1, 'página válida');
+igual(pg.limitarPagina(4, 0), 4, 'sin número de páginas aún: solo ≥ 0');
+igual(pg.limitarPagina(NaN, 3), 0, 'NaN → 0');
+const escalasPg = { 0: { metersPerPdfUnit: 0.1, origen: { tipo: 'ejemplo' } }, 2: { metersPerPdfUnit: 0.5, origen: { tipo: 'ejemplo' } } };
+igual(pg.escalaDePagina(escalasPg, 2), 0.5, 'escala de la hoja 3');
+igual(pg.escalaDePagina(escalasPg, 1), null, 'hoja sin calibrar = null');
+const zonasPg = [{ id: 'a', pageIndex: 2 }, { id: 'b', pageIndex: 0 }, { id: 'c', pageIndex: 2 }];
+igual(pg.zonasDePagina(zonasPg, 2).map((z) => z.id), ['a', 'c'], 'zonas de la hoja 3');
+igual(pg.paginasConZonas(zonasPg), [0, 2], 'hojas con zonas');
+
+// Store: navegación de páginas y escala/zonas por página.
+{
+  const st = storeMod.useProjectStore;
+  const S = () => st.getState();
+  const m500 = (500 * 0.0254) / 72;
+  cerca(S().metersPerPdfUnit, m500, 'plano de ejemplo: 1:500 en la hoja 1');
+  S().setNumPaginas(3);
+  S().setPageIndex(9);
+  igual(S().pageIndex, 2, 'setPageIndex limitado a numPaginas − 1');
+  igual(S().metersPerPdfUnit, null, 'hoja 3 sin calibrar');
+  S().setHerramienta('calibrar');
+  S().setPuntosCalibracion([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+  S().setScale(0.5, { tipo: 'calibrada', referenciaM: 50, longitudPdf: 100 });
+  igual(S().metersPerPdfUnit, 0.5, 'escala guardada en la hoja 3');
+  const idZ = S().addZone({ nombre: '', tipo: 'corte', pageIndex: 2, puntos: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], profundidad: 1 });
+  S().setZonaSeleccionada(idZ);
+  S().setPuntosCalibracion([{ x: 1, y: 1 }]);
+  S().setPageIndex(0);
+  cerca(S().metersPerPdfUnit, m500, 'volver a la hoja 1 recupera su escala');
+  igual(S().puntosCalibracion, [], 'cambiar de hoja cancela la calibración en curso');
+  igual(S().zonaSeleccionada, null, 'cambiar de hoja deselecciona la zona de otra hoja');
+  S().setPageIndex(-3);
+  igual(S().pageIndex, 0, 'setPageIndex no baja de 0');
+  S().setPageIndex(2);
+  igual(S().metersPerPdfUnit, 0.5, 'la hoja 3 conserva su escala');
+  S().setNumPaginas(2);
+  igual(S().pageIndex, 1, 'menos páginas → página actual limitada');
+  igual(S().metersPerPdfUnit, null, 'y se carga la escala de esa página');
+  S().setPdfSource({ tipo: 'archivo', url: 'blob:x', nombre: 'x.pdf' });
+  igual([S().pageIndex, S().metersPerPdfUnit, Object.keys(S().escalas).length], [0, null, 0], 'otro PDF: hoja 1 y sin escalas');
 }
 
 // i18n

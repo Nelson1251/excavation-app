@@ -18,6 +18,10 @@ export const en = {
   'toolbar.zoomOut': 'Zoom out',
   'toolbar.zoomIn': 'Zoom in',
   'toolbar.noPlan': 'No plan loaded',
+  'page.label': 'Page {n} of {total}',
+  'page.select': 'Page',
+  'page.prev': 'Previous page (PageUp)',
+  'page.next': 'Next page (PageDown)',
   'common.unspecified': 'Unspecified',
 
   'units.label': 'Units:',
@@ -53,6 +57,7 @@ export const en = {
 
   // --- Escala / calibración ---
   'scale.heading': 'Scale',
+  'scale.headingSheet': 'Scale · Sheet {n}',
   'scale.uncalibrated': 'Scale not calibrated',
   'scale.metric': '{value} m per PDF unit (≈ 1:{ratio})',
   'scale.imperial': '{value} ft per PDF unit · 1" of paper = {paper} (≈ 1:{ratio})',
@@ -97,6 +102,8 @@ export const en = {
   'zones.heading': 'Zones ({count})',
   'zones.empty': 'No zones. Use “Draw zone” to add one.',
   'zones.delete': 'Delete zone',
+  'zones.sheet': 'Sheet {n}',
+  'zones.sheetCurrent': 'shown',
   'zones.needsScale': 'Areas and volumes need a calibrated scale. Use “Calibrate scale”.',
   'zone.areaNeedsScale': 'Area: calibrate the scale',
   'zone.name': 'Name',

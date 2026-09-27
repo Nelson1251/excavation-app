@@ -27,6 +27,8 @@ export interface Zone {
   /** Clave i18n del nombre (zonas de ejemplo); se traduce al mostrar y sigue el selector EN | ES. */
   nombreClave?: Clave;
   tipo: TipoZona;
+  /** Página (hoja) del PDF donde está dibujada, basada en 0. Cada página tiene su propia escala. */
+  pageIndex: number;
   /** Vértices del polígono en unidades PDF. */
   puntos: Point[];
   /** Profundidad (corte) o espesor (relleno) promedio, en metros. */
@@ -89,15 +91,26 @@ export type OrigenEscala =
       longitudPdf: number;
     };
 
+/** Escala calibrada de una página del PDF. */
+export interface EscalaPagina {
+  metersPerPdfUnit: number;
+  origen: OrigenEscala;
+}
+
 /** Estado de datos del proyecto (sin acciones). */
 export interface ProjectState {
   pdfSource: PdfSource | null;
   /** Índice de página basado en 0. */
   pageIndex: number;
   numPaginas: number;
-  /** Metros reales por unidad PDF. null = escala sin calibrar. */
+  /**
+   * Escalas por página (clave = índice de página). Cada hoja de un juego de planos puede tener
+   * una escala distinta. Fuente de verdad; `metersPerPdfUnit`/`origenEscala` reflejan la página actual.
+   */
+  escalas: Record<number, EscalaPagina>;
+  /** Metros reales por unidad PDF de la página actual. null = página sin calibrar. */
   metersPerPdfUnit: number | null;
-  /** Origen de la escala (null = sin calibrar). */
+  /** Origen de la escala de la página actual (null = sin calibrar). */
   origenEscala: OrigenEscala | null;
   /** Puntos marcados en el lienzo con la herramienta Calibrar (0, 1 o 2), en unidades PDF. */
   puntosCalibracion: Point[];
